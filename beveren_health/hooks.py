@@ -140,6 +140,16 @@ app_license = "mit"
 # 	}
 # }
 
+doc_events = {
+    "Sales Invoice" : {
+        "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
+    },
+    "Full and Final Statement" : {
+        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+    }
+}
+
+
 # Scheduled Tasks
 # ---------------
 
