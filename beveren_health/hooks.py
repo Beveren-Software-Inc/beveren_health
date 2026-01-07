@@ -171,6 +171,14 @@ doc_events = {
 # 	],
 # }
 
+scheduler_events = {
+    "weekly": [
+        "beveren_health.beveren_health.notifications.employee_notification.notify_document_expiry",
+        "beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
+    ]
+}
+
+
 # Testing
 # -------
 
