@@ -1,0 +1,54 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-01-13 12:43:27.394657",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "instructions",
+  "section_break_olcq",
+  "text1"
+ ],
+ "fields": [
+  {
+   "fieldname": "instructions",
+   "fieldtype": "Text Editor",
+   "label": "Instructions"
+  },
+  {
+   "fieldname": "section_break_olcq",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "text1",
+   "fieldtype": "Text Editor",
+   "label": "Formal Text"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-01-13 13:09:00.908157",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "TNA Rating Instruction",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,90 @@
+[
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Perform their duties outlined in the Job Description and Maintains job competence by keeping updated with new developments in the field.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:24:37.369993",
+  "name": "Job Knowledge",
+  "title": "Job Knowledge"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Performs jobs accurately, completely and on time. Displays strong ability to plan, prioritize and work according to deadlines.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:28:54.606508",
+  "name": "Day to Day Operations Knowledge",
+  "title": "Day to Day Operations Knowledge"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p>Listens, discusses, and contributes in meetings and follows instructions when required. Responds accurately and clearly to questions from others in written/verbal form and shows good command over business language.</p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:29:29.134316",
+  "name": "Communication Skills",
+  "title": "Communication Skills"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p>Analyses existing inefficient procedures and sets an example for peers by constantly suggesting and implementing improvement initiatives and accepting change.</p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:30:14.519917",
+  "name": "Continuous Improvement",
+  "title": "Continuous Improvement"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p>Participates willingly and works with others in (inter)departmental tasks; looks for unfinished work and offers help to team members to complete tasks with respectful and good manners.</p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:30:47.340790",
+  "name": "Team Spirit",
+  "title": "Team Spirit"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Displays commitment and enthusiasm at work. Manages stress and time proficiently and ensures work delivered meets expected standards even under pressure.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:33:54.817279",
+  "name": "Handling Pressure",
+  "title": "Handling Pressure"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Attends regular department meetings, and providing enhancement taught for the department.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:34:26.033169",
+  "name": "Department meetings",
+  "title": "Department meetings"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Ensures confidentiality is maintained regarding patient and hospital related transactions.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:34:56.685333",
+  "name": "Confidentiality",
+  "title": "Confidentiality"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Assist by working overtime to complete the given assignments or when required.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:35:30.899125",
+  "name": "Participates and assists while off Duty",
+  "title": "Participates and assists while off Duty"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><span style=\"font-size: 14px;\">Ensures and attends continuous educational training sessions.</span></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 10:35:56.736475",
+  "name": "Professional Development",
+  "title": "Professional Development"
+ },
+ {
+  "description": "<div class=\"ql-editor read-mode\"><p><strong style=\"font-size: 14px;\">Always comes to work on time and punctual or as requested.</strong></p></div>",
+  "docstatus": 0,
+  "doctype": "TNA Template",
+  "modified": "2026-01-13 11:01:51.487621",
+  "name": "Attendance and Punctuality",
+  "title": "Attendance and Punctuality"
+ }
+]

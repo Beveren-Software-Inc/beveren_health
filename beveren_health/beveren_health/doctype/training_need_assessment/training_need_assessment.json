@@ -1,0 +1,325 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-01-11 16:02:11.676839",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "naming_series",
+  "employee",
+  "employee_name",
+  "employee_designation",
+  "date_of_joining",
+  "column_break_ngzj",
+  "appraisal_cycle",
+  "evaluator",
+  "evaluator_name",
+  "evaluator_designation",
+  "section_break_ejep",
+  "rating_instruction",
+  "section_break_icnq",
+  "assessments",
+  "section_break_cbzt",
+  "text1",
+  "section_break_uyil",
+  "total_rating",
+  "column_break_gtyq",
+  "total__achieved",
+  "section_break_napn",
+  "appraisee_comments",
+  "section_break_bqdp",
+  "date1",
+  "column_break_rwyj",
+  "sugnature",
+  "section_break_tqik",
+  "supervisor_comments",
+  "section_break_lfss",
+  "supervisor",
+  "supervisor_name",
+  "column_break_pzoy",
+  "supervisor_designation",
+  "date2",
+  "column_break_wamt",
+  "signature",
+  "section_break_pnze",
+  "training_requirements",
+  "section_break_yxum",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_yxum",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Training Need Assessment",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ngzj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "evaluator",
+   "fieldtype": "Link",
+   "label": "Evaluator",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "evaluator.employee_name",
+   "fieldname": "evaluator_name",
+   "fieldtype": "Data",
+   "label": "Evaluator Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.designation",
+   "fieldname": "employee_designation",
+   "fieldtype": "Data",
+   "label": "Employee Designation",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "evaluator.designation",
+   "fieldname": "evaluator_designation",
+   "fieldtype": "Data",
+   "label": "Evaluator Designation",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.date_of_joining",
+   "fieldname": "date_of_joining",
+   "fieldtype": "Data",
+   "label": "Date of Joining",
+   "read_only": 1
+  },
+  {
+   "fieldname": "appraisal_cycle",
+   "fieldtype": "Link",
+   "label": "Appraisal Cycle",
+   "options": "Appraisal Cycle",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_ejep",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "rating_instruction",
+   "fieldtype": "Text Editor",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_pnze",
+   "fieldtype": "Section Break",
+   "label": "Traning Requirements"
+  },
+  {
+   "fieldname": "training_requirements",
+   "fieldtype": "Text Editor",
+   "label": "Training Requirements"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_tqik",
+   "fieldtype": "Section Break",
+   "label": "Supervisor Comments"
+  },
+  {
+   "fieldname": "supervisor_comments",
+   "fieldtype": "Text Editor",
+   "label": "Supervisor Comments"
+  },
+  {
+   "fieldname": "section_break_lfss",
+   "fieldtype": "Section Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval: doc.supervisor_comments",
+   "fieldname": "supervisor",
+   "fieldtype": "Link",
+   "label": "Supervisor",
+   "mandatory_depends_on": "eval: doc.supervisor_comments",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "column_break_pzoy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fetch_from": "supervisor.employee_name",
+   "fieldname": "supervisor_name",
+   "fieldtype": "Data",
+   "label": "Supervisor Name",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fetch_from": "supervisor.designation",
+   "fieldname": "supervisor_designation",
+   "fieldtype": "Data",
+   "label": "Supervisor Designation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_wamt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "depends_on": "eval: doc.supervisor",
+   "fieldname": "signature",
+   "fieldtype": "Attach Image",
+   "label": "Signature"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "section_break_napn",
+   "fieldtype": "Section Break",
+   "label": "Appraisee Comments"
+  },
+  {
+   "fieldname": "appraisee_comments",
+   "fieldtype": "Text Editor",
+   "label": "Appraisee Comments",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_bqdp",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "Today",
+   "depends_on": "eval: doc.appraisee_comments",
+   "fieldname": "date1",
+   "fieldtype": "Date",
+   "label": "Date",
+   "mandatory_depends_on": "eval: doc.appraisee_comments"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Today",
+   "depends_on": "eval: doc.supervisor",
+   "fieldname": "date2",
+   "fieldtype": "Date",
+   "label": "Date"
+  },
+  {
+   "depends_on": "eval: doc.appraisee_comments",
+   "fieldname": "sugnature",
+   "fieldtype": "Attach Image",
+   "label": "Sugnature"
+  },
+  {
+   "fieldname": "column_break_rwyj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_uyil",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_rating",
+   "fieldtype": "Float",
+   "label": "Total Rating",
+   "read_only": 1
+  },
+  {
+   "description": "Total of Overall Performance Rating (Total Rating X 100) / (Total No. of questions X 5)",
+   "fieldname": "total__achieved",
+   "fieldtype": "Float",
+   "label": "Total % Achieved",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_gtyq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_icnq",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "assessments",
+   "fieldtype": "Table",
+   "label": "Assessments",
+   "options": "TNA Table"
+  },
+  {
+   "fieldname": "section_break_cbzt",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "text1",
+   "fieldtype": "Text Editor",
+   "read_only": 1
+  },
+  {
+   "default": "HR-TNA-.#####.-.YY.",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "HR-TNA-.#####.-.YY.",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-01-14 15:57:18.222847",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Training Need Assessment",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
