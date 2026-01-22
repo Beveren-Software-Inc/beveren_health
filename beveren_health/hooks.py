@@ -49,7 +49,7 @@ app_license = "mit"
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
-    "Purchase Receipt Item" : "beveren_health/public/js/purchase_receipt_item.js",
+    "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Item Group" : "beveren_health/public/js/item_group.js"
 }
 
@@ -91,7 +91,7 @@ doctype_js = {
 # ------------
 
 # before_install = "beveren_health.install.before_install"
-after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
+# after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
 
 # Uninstallation
 # ------------
