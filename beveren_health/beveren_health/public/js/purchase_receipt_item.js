@@ -69,13 +69,16 @@ frappe.ui.form.on("Purchase Receipt Item", {
 						<head>
 							<style>
 								body {
-									text-align: center;
 									font-family: Arial, sans-serif;
 									width: 2.299in;
 									height: 1.5in;
 									margin: 0;
 									padding: 5px;
 									box-sizing: border-box;
+									display: flex;
+									justify-content: center;
+									align-items: center;
+									text-align: center;
 								}
 								
 								@page {
@@ -90,6 +93,11 @@ frappe.ui.form.on("Purchase Receipt Item", {
 									padding: 5px;
 									box-sizing: border-box;
 									overflow: hidden;
+									display: flex;
+									flex-direction: column;
+									justify-content: center;
+									align-items: center;
+									text-align: center;
 								}
 
 								.barcode-section {
@@ -104,24 +112,18 @@ frappe.ui.form.on("Purchase Receipt Item", {
 									image-rendering: crisp-edges;
 								}
 
-								.barcode-value {
-									font-size: 8px;
-									margin-top: -2px;
-									font-family: monospace;
-								}
-
 								.details-section {
 									border-top: 1px solid #ccc;
 									padding-top: 4px;
 									margin-top: 4px;
-									font-size: 8px;
+									font-size: 7px;
 									line-height: 1.1;
-									text-align: left;
+									text-align: center;
 								}
 
 								.item-name {
 									font-weight: bold;
-									font-size: 10px;
+									font-size: 9px;
 									margin-bottom: 2px;
 									text-align: center;
 									line-height: 1.1;
@@ -142,7 +144,6 @@ frappe.ui.form.on("Purchase Receipt Item", {
 							<div class="medication-label">
 								<div class="barcode-section">
 									<img src="${barcode_image}" alt="Barcode" />
-									<div class="barcode-value">${barcode_value || ''}</div>
 								</div>
 								
 								<div class="details-section">
