@@ -1,0 +1,68 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:mah_code",
+ "creation": "2026-01-28 14:19:03.626539",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "mah_code",
+  "mah_name",
+  "mah_address"
+ ],
+ "fields": [
+  {
+   "fieldname": "mah_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "MAH Code",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "mah_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "MAH Name"
+  },
+  {
+   "fieldname": "mah_address",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "MAH Address"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-28 14:20:11.158121",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "MAH",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
