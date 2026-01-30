@@ -1,0 +1,196 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-01-30 13:15:04.122316",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_cazm",
+  "naming_series",
+  "posting_date",
+  "from_date",
+  "to_date",
+  "employee",
+  "employee_name",
+  "department",
+  "is_less_time_deductible_",
+  "column_break_dsat",
+  "company",
+  "compensation_frequency",
+  "total_less_time_duration",
+  "total_overtime_duration",
+  "uncompensated_duration",
+  "salary_component",
+  "hourly_rate",
+  "amended_from",
+  "section_break_xfpd",
+  "less_time_compensation_details"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_cazm",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Less Time Compensation",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "From Date",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Date",
+   "label": "To Date",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_dsat",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "label": "Employee",
+   "options": "Employee"
+  },
+  {
+   "default": "Quarterly",
+   "fieldname": "compensation_frequency",
+   "fieldtype": "Select",
+   "label": "Compensation Frequency",
+   "options": "Monthly\nBi-Monthly\nQuarterly\nHalf-Yearly\nYearly"
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.department",
+   "fieldname": "department",
+   "fieldtype": "Data",
+   "label": "Department",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "employee.custom_is_less_time_deductible_",
+   "fieldname": "is_less_time_deductible_",
+   "fieldtype": "Check",
+   "label": "Is Less Time Deductible ?",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_xfpd",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "less_time_compensation_details",
+   "fieldtype": "Table",
+   "label": "Less Time Compensation Details",
+   "options": "LT Compensation Details"
+  },
+  {
+   "fieldname": "uncompensated_duration",
+   "fieldtype": "Float",
+   "label": "Uncompensated Duration",
+   "read_only": 1
+  },
+  {
+   "default": "HR-LTC-.employee.-.##.",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Series",
+   "options": "HR-LTC-.employee.-.##.",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total_less_time_duration",
+   "fieldtype": "Float",
+   "label": "Total Less Time Duration",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_overtime_duration",
+   "fieldtype": "Float",
+   "label": "Total Overtime Duration",
+   "read_only": 1
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "salary_component",
+   "fieldtype": "Link",
+   "label": "Salary Component",
+   "options": "Salary Component"
+  },
+  {
+   "fieldname": "hourly_rate",
+   "fieldtype": "Currency",
+   "label": "Hourly Rate"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [
+    {
+        "link_doctype": "Additional Salary",
+        "link_fieldname": "ref_docname"
+    }
+ ],
+ "modified": "2026-01-30 15:45:29.332577",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Less Time Compensation",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
