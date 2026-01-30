@@ -1,0 +1,82 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "prompt",
+ "creation": "2026-01-30 10:02:38.631361",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "less_time_salary_component",
+  "less_time_amount_calculation",
+  "column_break_qcdy",
+  "applicable_salary_components",
+  "hourly_rate"
+ ],
+ "fields": [
+  {
+   "description": "Less Time deductions will be booked under this salary component.",
+   "fieldname": "less_time_salary_component",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Less Time Salary Component",
+   "options": "Salary Component",
+   "reqd": 1
+  },
+  {
+   "default": "Salary Component Based",
+   "description": "Choose how the hourly lesstime amount is calculated:\n<ol style=\"padding-left:15px;\"><li>Fixed Hourly Rate: A fixed, manually entered hourly rate.</li>\n<li>Salary Component-Based:\n\n(Sum of selected component amounts) \u00f7 (Payment Days) \u00f7 (Standard Daily Hours)</li></ol>",
+   "fieldname": "less_time_amount_calculation",
+   "fieldtype": "Select",
+   "label": "Less Time Amount Calculation",
+   "options": "Salary Component Based\nFixed Hourly Rate"
+  },
+  {
+   "fieldname": "column_break_qcdy",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval: doc.less_time_amount_calculation == \"Salary Component Based\";",
+   "description": "Select the salary components whose total will be used from the salary slip to calculate the hourly lesstime rate.",
+   "fieldname": "applicable_salary_components",
+   "fieldtype": "Table MultiSelect",
+   "label": "Applicable Salary Components",
+   "mandatory_depends_on": "eval: doc.less_time_amount_calculation == \"Salary Component Based\";",
+   "options": "Overtime Salary Component"
+  },
+  {
+   "depends_on": "eval: doc.less_time_amount_calculation == \"Fixed Hourly Rate\";",
+   "fieldname": "hourly_rate",
+   "fieldtype": "Currency",
+   "label": "Hourly Rate",
+   "mandatory_depends_on": "eval: doc.less_time_amount_calculation == \"Fixed Hourly Rate\";"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-30 10:12:31.195431",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Less Time Type",
+ "naming_rule": "Set by user",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

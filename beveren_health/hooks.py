@@ -43,7 +43,8 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Overtime Slip" : "public/js/overtime_slip.js",
+              "Salary Slip" : "public/js/salary_slip.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
@@ -146,6 +147,9 @@ doc_events = {
     },
     "Full and Final Statement" : {
         "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+    },
+    "Attendance" : {
+        "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
     }
 }
 
@@ -188,9 +192,9 @@ scheduler_events = {
 # ------------------------------
 #
 # Specify custom mixins to extend the standard doctype controller.
-# extend_doctype_class = {
-# 	"Task": "beveren_health.custom.task.CustomTaskMixin"
-# }
+extend_doctype_class = {
+	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip"
+}
 
 # Overriding Methods
 # ------------------------------
