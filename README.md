@@ -12,6 +12,19 @@ bench get-app $URL_OF_THIS_REPO --branch develop
 bench install-app beveren_health
 ```
 
+#### Dependencies
+
+This app requires the `python-barcode` library for barcode image generation:
+
+```bash
+bench pip install python-barcode[images]
+```
+
+Or add it to your `requirements.txt`:
+```
+python-barcode[images]
+```
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:

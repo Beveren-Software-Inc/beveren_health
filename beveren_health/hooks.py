@@ -49,6 +49,11 @@ doctype_js = {"Overtime Slip" : "public/js/overtime_slip.js",
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
+doctype_js = {
+    "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+    "Item Group" : "beveren_health/public/js/item_group.js"
+}
+
 # Svg Icons
 # ------------------
 # include app icons in desk
@@ -87,7 +92,7 @@ doctype_js = {"Overtime Slip" : "public/js/overtime_slip.js",
 # ------------
 
 # before_install = "beveren_health.install.before_install"
-# after_install = "beveren_health.install.after_install"
+# after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
 
 # Uninstallation
 # ------------
@@ -148,8 +153,13 @@ doc_events = {
     "Full and Final Statement" : {
         "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
     },
+<<<<<<< HEAD
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
+=======
+    "Item" : {
+        "on_update" : "beveren_health.beveren_health.customize.item.on_update"
+>>>>>>> upstream/HEAD
     }
 }
 
@@ -273,5 +283,15 @@ extend_doctype_class = {
 # ignore_translatable_strings_from = []
 
 fixtures = [
-    {"doctype" : "TNA Template"}
+    {"doctype" : "TNA Template"},
+    {
+        "doctype": "Custom Field",
+        "filters": [
+            ["name", "in", [
+                "Purchase Receipt Item-custom_label_print",
+                "Purchase Receipt Item-custom_label_printing",
+                "Item Barcode-custom_image",
+            ]]
+        ]
+    }
 ]
