@@ -153,13 +153,11 @@ doc_events = {
     "Full and Final Statement" : {
         "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
     },
-<<<<<<< HEAD
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
-=======
-    "Item" : {
+    },
+     "Item" : {
         "on_update" : "beveren_health.beveren_health.customize.item.on_update"
->>>>>>> upstream/HEAD
     }
 }
 
