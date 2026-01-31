@@ -1,0 +1,64 @@
+{
+ "actions": [],
+ "allow_import": 1,
+ "allow_rename": 1,
+ "autoname": "field:additional_salary_type",
+ "creation": "2026-01-31 03:18:30.394943",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "additional_salary_type",
+  "column_break_zcre",
+  "salary_component"
+ ],
+ "fields": [
+  {
+   "fieldname": "additional_salary_type",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Additional Salary Type",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "column_break_zcre",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "salary_component",
+   "fieldtype": "Link",
+   "label": "Salary Component",
+   "options": "Salary Component",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-01-31 03:27:40.117763",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Additional Salary Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "quick_entry": 1,
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
