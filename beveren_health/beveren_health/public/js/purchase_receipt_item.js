@@ -1,6 +1,131 @@
 // Copyright (c) 2026, Beveren Software and contributors
 // For license information, please see license.txt
 
+const LABEL_CSS = `
+	body { font-family: Arial, sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
+	@page { size: 2.299in 1.5in; margin: 0; }
+	.label-page { width: 2.299in; height: 1.5in; padding: 5px; box-sizing: border-box; page-break-after: always; }
+	.label-page:last-child { page-break-after: auto; }
+	.medication-label { width: 100%; height: 100%; border: 1px solid #000; padding: 5px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+	.barcode-section { text-align: center; margin-bottom: 5px; }
+	.barcode-section img { max-width: 100%; height: 35px; margin-bottom: 2px; image-rendering: crisp-edges; }
+	.details-section { border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px; font-size: 7px; line-height: 1.1; text-align: center; }
+	.item-name { font-weight: bold; font-size: 9px; margin-bottom: 2px; text-align: center; line-height: 1.1; }
+	.detail-row { margin-bottom: 1px; line-height: 1.1; }
+	img { max-width: 100%; height: auto; }
+`;
+
+function build_label_html(item_row, item_doc, barcode_image, expiry_date, formatted_price) {
+	return `
+		<div class="medication-label">
+			<div class="barcode-section">
+				<img src="${barcode_image}" alt="Barcode" />
+			</div>
+			<div class="details-section">
+				<div class="item-name">${item_row.item_name || item_row.item_code}</div>
+				<div class="detail-row"><strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}</div>
+				<div class="detail-row"><strong>Form:</strong> ${item_doc.custom_pharmaceutical_form || "N/A"}</div>
+				<div class="detail-row"><strong>Price:</strong> ${formatted_price}</div>
+				<div class="detail-row"><strong>Batch:</strong> ${item_row.batch_no || "N/A"}</div>
+				<div class="detail-row"><strong>Expiry:</strong> ${expiry_date}</div>
+			</div>
+		</div>
+	`;
+}
+
+function fetch_label_data_for_row(item_row) {
+	return new Promise((resolve) => {
+		frappe.call({
+			method: "frappe.client.get",
+			args: { doctype: "Item", name: item_row.item_code },
+			callback: function(r) {
+				if (!r.message) {
+					resolve(null);
+					return;
+				}
+				let item_doc = r.message;
+				let barcode_image = null;
+				if (item_doc.barcodes && item_doc.barcodes.length > 0) {
+					for (let b of item_doc.barcodes) {
+						if (b.custom_image) {
+							barcode_image = b.custom_image;
+							break;
+						}
+					}
+				}
+				if (!barcode_image) {
+					resolve(null);
+					return;
+				}
+				let expiry_date = "N/A";
+				if (item_row.batch_no) {
+					frappe.call({
+						method: "frappe.client.get",
+						args: { doctype: "Batch", name: item_row.batch_no },
+						callback: function(batch_r) {
+							if (batch_r.message && batch_r.message.expiry_date) {
+								expiry_date = frappe.datetime.str_to_user(batch_r.message.expiry_date);
+							}
+							let price = item_row.rate || item_doc.standard_rate || 0;
+							let formatted_price = format_currency(price, frappe.defaults.get_default("currency") || "USD");
+							resolve({ item_row, item_doc, barcode_image, expiry_date, formatted_price });
+						}
+					});
+				} else {
+					let price = item_row.rate || item_doc.standard_rate || 0;
+					let formatted_price = format_currency(price, frappe.defaults.get_default("currency") || "USD");
+					resolve({ item_row, item_doc, barcode_image, expiry_date, formatted_price });
+				}
+			}
+		});
+	});
+}
+
+frappe.ui.form.on("Purchase Receipt", {
+	refresh(frm) {
+		frm.add_custom_button(__("Label Print"), function() {
+			let items = (frm.doc.items || []).filter(function(row) { return row.item_code; });
+			if (!items.length) {
+				frappe.msgprint(__("No items to print labels for."));
+				return;
+			}
+			frappe.dom.freeze(__("Loading label data…"));
+			let promises = items.map(function(item_row) { return fetch_label_data_for_row(item_row); });
+			Promise.all(promises).then(function(results) {
+				frappe.dom.unfreeze();
+				let labels_html = [];
+				let skipped = 0;
+				results.forEach(function(data) {
+					if (!data) {
+						skipped++;
+						return;
+					}
+					labels_html.push(
+						'<div class="label-page">' +
+						build_label_html(data.item_row, data.item_doc, data.barcode_image, data.expiry_date, data.formatted_price) +
+						'</div>'
+					);
+				});
+				if (!labels_html.length) {
+					frappe.msgprint(__("No items with barcode image found."));
+					return;
+				}
+				if (skipped) {
+					frappe.show_alert({ message: __("{0} item(s) skipped (no barcode).", [skipped]), indicator: "orange" });
+				}
+				let print_window = window.open("", "_blank");
+				print_window.document.open();
+				print_window.document.write(
+					"<html><head><style>" + LABEL_CSS + "</style></head><body>" +
+					labels_html.join("") +
+					"<script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };<\/script></body></html>"
+				);
+				print_window.document.close();
+			});
+		});
+	}
+});
+
 frappe.ui.form.on("Purchase Receipt Item", {
 	custom_label_print(frm, cdt, cdn) {
 		let item = locals[cdt][cdn];
