@@ -42,10 +42,16 @@ class LessTimeEntry(Document):
             )
             frappe.throw(msg)
     
-    def on_submit(self):
-        if self.is_less_time_deductible_:
-            self.process_less_time_slip()
+    # def on_submit(self):
+        # if self.is_less_time_deductible_:
+            # self.process_less_time_slip()
 
+    def cadforlte(doc):
+        doc = frappe.get_doc("Less Time Entry", doc)
+        if doc.docstatus == 1:
+            if doc.is_less_time_deductible_:
+                doc.process_less_time_slip()
+        
     @frappe.whitelist()
     def get_frequency_and_dates(self):
         date = self.posting_date
@@ -276,3 +282,4 @@ class LessTimeEntry(Document):
                 less_time_types[lt_type]["components"] = components_by_parent.get(lt_type, [])
 
         return less_time_types
+    

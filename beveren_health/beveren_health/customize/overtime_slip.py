@@ -5,12 +5,26 @@ from hrms.hr.doctype.overtime_slip.overtime_slip import OvertimeSlip as BaseOver
 from hrms.payroll.doctype.salary_structure_assignment.salary_structure_assignment import (
 	get_assigned_salary_structure,
 )
-
+from beveren_health.beveren_health.doctype.less_time_entry.less_time_entry import LessTimeEntry as LTE
 
 class OvertimeSlip(BaseOvertimeSlip):
+    def validate(self):
+        if self.total_overtime_duration <= 0:
+            self.flags.ignore_mandatory = True
+        name, total = self.fetch_less_time_total(self.employee, self.start_date, self.end_date)
+        if name:
+            self.custom_reference_document = name
+        if total:
+            self.custom_total_less_time_duration = total
+            self.custom_total_over_time_duration = self.total_overtime_duration
+            self.total_overtime_duration = self.custom_total_over_time_duration - self.custom_total_less_time_duration
+        
     def on_submit(self):
         if self.custom_is_overtime_payable_:
             self.process_overtime_slip()
+        if self.total_overtime_duration < 0:
+            LTE.cadforlte(self.custom_reference_document)
+        
         
     def process_overtime_slip(self):
         overtime_components = self.get_overtime_component_amounts()
@@ -189,3 +203,24 @@ class OvertimeSlip(BaseOvertimeSlip):
                 overtime_types[ot_type]["components"] = components_by_parent.get(ot_type, [])
 
         return overtime_types
+
+    def fetch_less_time_total(self, employee, start_date, end_date):
+        start_date = getdate(start_date)
+        end_date = getdate(end_date)
+        prev_month_21 = add_months(start_date, -1).replace(day=21)
+        curr_month_20 = end_date.replace(day=20)
+        name = frappe.db.get_value("Less Time Entry", {
+            "employee" : employee,
+            "start_date" : prev_month_21,
+            "end_date" : curr_month_20,
+            "is_less_time_deductible_" : 1,
+            "docstatus" : 1
+            }, "name")
+        total = frappe.db.get_value("Less Time Entry", {
+            "employee" : employee,
+            "start_date" : prev_month_21,
+            "end_date" : curr_month_20,
+            "is_less_time_deductible_" : 1,
+            "docstatus" : 1
+            }, "total_less_time_duration")
+        return name, total

@@ -43,15 +43,19 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_js = {"Overtime Slip" : "public/js/overtime_slip.js",
-              "Salary Slip" : "public/js/salary_slip.js"}
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
-    "Item Group" : "beveren_health/public/js/item_group.js"
+    "Item Group" : "beveren_health/public/js/item_group.js",
+    "Overtime Slip" : "public/js/overtime_slip.js",
+    "Salary Slip" : "public/js/salary_slip.js",
+    "Holiday List" : "public/js/holiday_list.js",
+    "Shift Type" : "public/js/shift_type.js",
+    "Shift Assignment" : "public/js/shift_assignment.js",
+    "Employee Checkin" : "public/js/employee_checkin.js"
 }
 
 # Svg Icons
@@ -158,6 +162,9 @@ doc_events = {
     },
      "Item" : {
         "on_update" : "beveren_health.beveren_health.customize.item.on_update"
+    },
+    "Shift Type": {
+        "before_save": "beveren_health.beveren_health.customize.shift_type.before_save"
     }
 }
 
