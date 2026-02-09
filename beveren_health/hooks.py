@@ -49,6 +49,7 @@ app_license = "mit"
 
 doctype_js = {
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+    "Stock Settings" : "/public/js/stock_settings.js",
     "Item Group" : "beveren_health/public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
     "Salary Slip" : "public/js/salary_slip.js",
@@ -191,6 +192,9 @@ doc_events = {
 # }
 
 scheduler_events = {
+    "daily": [
+        "beveren_health.beveren_health.utils.expiry_movement.move_expired_batches_to_expiry_warehouse",
+    ],
     "weekly": [
         "beveren_health.beveren_health.notifications.employee_notification.notify_document_expiry",
         "beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
