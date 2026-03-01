@@ -23,8 +23,8 @@ function build_label_html(item_row, item_doc, barcode_image, expiry_date, format
 			</div>
 			<div class="details-section">
 				<div class="item-name">${item_row.item_name || item_row.item_code}</div>
-				<div class="detail-row"><strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}</div>
-				<div class="detail-row"><strong>Form:</strong> ${item_doc.custom_pharmaceutical_form || "N/A"}</div>
+								<div class="detail-row"><strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}</div>
+<div class="detail-row"><strong>Branch:</strong> ${item_row.cost_center || "N/A"}</div>				<div class="detail-row"><strong>Form:</strong> ${item_doc.custom_pharmaceutical_form || "N/A"}</div>
 				<div class="detail-row"><strong>Price:</strong> ${formatted_price}</div>
 				<div class="detail-row"><strong>Batch:</strong> ${item_row.batch_no || "N/A"}</div>
 				<div class="detail-row"><strong>Expiry:</strong> ${expiry_date}</div>
@@ -81,46 +81,125 @@ function fetch_label_data_for_row(item_row) {
 	});
 }
 
+// frappe.ui.form.on("Purchase Receipt", {
+// 	refresh(frm) {
+// 		frm.add_custom_button(__("Label Print"), function() {
+// 			let items = (frm.doc.items || []).filter(function(row) { return row.item_code; });
+// 			if (!items.length) {
+// 				frappe.msgprint(__("No items to print labels for."));
+// 				return;
+// 			}
+// 			frappe.dom.freeze(__("Loading label data…"));
+// 			let promises = items.map(function(item_row) { return fetch_label_data_for_row(item_row); });
+// 			Promise.all(promises).then(function(results) {
+// 				frappe.dom.unfreeze();
+// 				let labels_html = [];
+// 				let skipped = 0;
+// 				results.forEach(function(data) {
+// 					if (!data) {
+// 						skipped++;
+// 						return;
+// 					}
+// 					labels_html.push(
+// 						'<div class="label-page">' +
+// 						build_label_html(data.item_row, data.item_doc, data.barcode_image, data.expiry_date, data.formatted_price) +
+// 						'</div>'
+// 					);
+// 				});
+// 				if (!labels_html.length) {
+// 					frappe.msgprint(__("No items with barcode image found."));
+// 					return;
+// 				}
+// 				if (skipped) {
+// 					frappe.show_alert({ message: __("{0} item(s) skipped (no barcode).", [skipped]), indicator: "orange" });
+// 				}
+// 				let print_window = window.open("", "_blank");
+// 				print_window.document.open();
+// 				print_window.document.write(
+// 					"<html><head><style>" + LABEL_CSS + "</style></head><body>" +
+// 					labels_html.join("") +
+// 					"<script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };<\/script></body></html>"
+// 				);
+// 				print_window.document.close();
+// 			});
+// 		});
+// 	}
+// });
+
+// --------------------------------------------------
+// MAIN PRINT BUTTON
+// --------------------------------------------------
 frappe.ui.form.on("Purchase Receipt", {
+
 	refresh(frm) {
+
 		frm.add_custom_button(__("Label Print"), function() {
-			let items = (frm.doc.items || []).filter(function(row) { return row.item_code; });
+
+			let items = (frm.doc.items || []).filter(r => r.item_code);
+
 			if (!items.length) {
-				frappe.msgprint(__("No items to print labels for."));
+				frappe.msgprint(__("No items to print."));
 				return;
 			}
-			frappe.dom.freeze(__("Loading label data…"));
-			let promises = items.map(function(item_row) { return fetch_label_data_for_row(item_row); });
-			Promise.all(promises).then(function(results) {
+
+			frappe.dom.freeze(__("Preparing labels..."));
+
+			let promises = items.map(r => fetch_label_data_for_row(r));
+
+			Promise.all(promises).then(results => {
+
 				frappe.dom.unfreeze();
+
 				let labels_html = [];
 				let skipped = 0;
-				results.forEach(function(data) {
+
+				results.forEach(data => {
+
 					if (!data) {
 						skipped++;
 						return;
 					}
-					labels_html.push(
-						'<div class="label-page">' +
-						build_label_html(data.item_row, data.item_doc, data.barcode_image, data.expiry_date, data.formatted_price) +
-						'</div>'
-					);
+
+					// ✅ PRINT PER QUANTITY
+					let qty = Math.round(flt(data.item_row.qty) || 1);
+
+					for (let i = 0; i < qty; i++) {
+						labels_html.push(
+							'<div class="label-page">' +
+							build_label_html(
+								data.item_row,
+								data.item_doc,
+								data.barcode_image,
+								data.expiry_date,
+								data.formatted_price
+							) +
+							'</div>'
+						);
+					}
 				});
+
 				if (!labels_html.length) {
-					frappe.msgprint(__("No items with barcode image found."));
+					frappe.msgprint(__("No printable labels."));
 					return;
 				}
+
 				if (skipped) {
-					frappe.show_alert({ message: __("{0} item(s) skipped (no barcode).", [skipped]), indicator: "orange" });
+					frappe.show_alert({
+						message: __("{0} item(s) skipped (no barcode).", [skipped]),
+						indicator: "orange"
+					});
 				}
-				let print_window = window.open("", "_blank");
-				print_window.document.open();
-				print_window.document.write(
+
+				let w = window.open("", "_blank");
+
+				w.document.write(
 					"<html><head><style>" + LABEL_CSS + "</style></head><body>" +
 					labels_html.join("") +
-					"<script>window.onload = function() { window.print(); window.onafterprint = function() { window.close(); }; };<\/script></body></html>"
+					"<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>" +
+					"</body></html>"
 				);
-				print_window.document.close();
+
+				w.document.close();
 			});
 		});
 	}
@@ -273,6 +352,9 @@ frappe.ui.form.on("Purchase Receipt Item", {
 								
 								<div class="details-section">
 									<div class="item-name">${item.item_name || item.item_code}</div>
+									<div class="detail-row">
+										<strong>Branch:</strong> ${item_doc.cost_center || "N/A"}
+									</div>
 									<div class="detail-row">
 										<strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}
 									</div>
