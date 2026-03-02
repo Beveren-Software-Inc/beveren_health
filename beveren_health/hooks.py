@@ -306,6 +306,8 @@ fixtures = [
                 "Item Barcode-custom_image",
                 "Purchase Receipt Item-custom_expiry_date",
                 "Purchase Receipt Item-custom_manufacturing_date",
+                "Cost Center-custom_cr_no",
+                "Warehouse-custom_cr_no"
             ]]
         ]
     }
