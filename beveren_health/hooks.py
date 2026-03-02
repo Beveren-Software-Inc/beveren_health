@@ -167,6 +167,9 @@ doc_events = {
     },
     "Shift Type": {
         "before_save": "beveren_health.beveren_health.customize.shift_type.before_save"
+    },
+    "Batch": {
+        "before_save": "beveren_health.beveren_health.override.batch.before_save"
     }
 }
 
@@ -301,6 +304,8 @@ fixtures = [
                 "Purchase Receipt Item-custom_label_print",
                 "Purchase Receipt Item-custom_label_printing",
                 "Item Barcode-custom_image",
+                "Purchase Receipt Item-custom_expiry_date",
+                "Purchase Receipt Item-custom_manufacturing_date",
             ]]
         ]
     }
