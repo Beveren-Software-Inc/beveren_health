@@ -26,7 +26,6 @@ function build_label_html(item_row, item_doc, barcode_image, expiry_date, format
 				<div class="item-name">${item_row.item_name || item_row.item_code}</div>
 				<div class="detail-row"><strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}</div>
 				<div class="detail-row"><strong>Branch:</strong> ${item_row.cost_center || "N/A"}</div>
-				<div class="detail-row"><strong>Form:</strong> ${item_doc.custom_pharmaceutical_form || "N/A"}</div>
 				<div class="detail-row"><strong>Price:</strong> ${formatted_price}</div>
 				<div class="detail-row"><strong>Batch:</strong> ${batch_label}</div>
 				<div class="detail-row"><strong>Expiry:</strong> ${expiry_date}</div>
@@ -309,7 +308,6 @@ frappe.ui.form.on("Purchase Receipt Item", {
 									<div class="item-name">${item.item_name || item.item_code}</div>
 									<div class="detail-row"><strong>Branch:</strong> ${item_doc.cost_center || "N/A"}</div>
 									<div class="detail-row"><strong>Strength:</strong> ${item_doc.custom_strength || "N/A"}</div>
-									<div class="detail-row"><strong>Form:</strong> ${item_doc.custom_pharmaceutical_form || "N/A"}</div>
 									<div class="detail-row"><strong>Price:</strong> ${formatted_price}</div>
 									<div class="detail-row"><strong>Batch:</strong> ${batch_label}</div>
 									<div class="detail-row"><strong>Expiry:</strong> ${expiry_date}</div>
