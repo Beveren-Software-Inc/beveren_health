@@ -9,5 +9,8 @@ def autoname_shift_type(doc, method):
     doc.name = f"{int(doc.custom_standard_working_hours)} Hours Shift {start_hour}-{end_hour} {doc.custom_weekly_off}-Off"
 
 def before_save(doc, method):
-    doc.custom_standard_working_hours = time_diff_in_hours(doc.end_time, doc.start_time)
+    hours = time_diff_in_hours(doc.end_time, doc.start_time)
+    if hours < 0:
+        hours = 24 + hours
+    doc.custom_standard_working_hours = hours
     autoname_shift_type(doc, method)
