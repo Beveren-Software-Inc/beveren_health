@@ -51,6 +51,7 @@ doctype_js = {
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
+    "Batch" : "public/js/batch.js",
     "Item Group" : "beveren_health/public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
     "Salary Slip" : "public/js/salary_slip.js",
