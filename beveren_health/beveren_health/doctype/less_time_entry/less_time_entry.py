@@ -46,10 +46,20 @@ class LessTimeEntry(Document):
         # if self.is_less_time_deductible_:
             # self.process_less_time_slip()
 
+        
     def cadforlte(doc):
         doc = frappe.get_doc("Less Time Entry", doc)
         if doc.docstatus == 1:
             if doc.is_less_time_deductible_:
+                # if doc.total_overtime_duration <= 0:
+                #     doc.flags.ignore_mandatory = True
+                # name, total = doc.fetch_less_time_total(doc.employee, doc.start_date, doc.end_date)
+                # if name:
+                #     doc.custom_reference_document = name
+                # if total:
+                #     doc.custom_total_less_time_duration = total
+                #     doc.custom_total_over_time_duration = doc.total_overtime_duration
+                #     doc.total_overtime_duration = doc.custom_total_over_time_duration - doc.custom_total_less_time_duration
                 doc.process_less_time_slip()
         
     @frappe.whitelist()

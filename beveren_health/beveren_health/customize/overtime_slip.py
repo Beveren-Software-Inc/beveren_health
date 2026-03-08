@@ -8,7 +8,7 @@ from hrms.payroll.doctype.salary_structure_assignment.salary_structure_assignmen
 from beveren_health.beveren_health.doctype.less_time_entry.less_time_entry import LessTimeEntry as LTE
 
 class OvertimeSlip(BaseOvertimeSlip):
-    def validate(self):
+    def before_submit(self):
         if self.total_overtime_duration <= 0:
             self.flags.ignore_mandatory = True
         name, total = self.fetch_less_time_total(self.employee, self.start_date, self.end_date)
@@ -20,10 +20,11 @@ class OvertimeSlip(BaseOvertimeSlip):
             self.total_overtime_duration = self.custom_total_over_time_duration - self.custom_total_less_time_duration
         
     def on_submit(self):
-        if self.custom_is_overtime_payable_:
-            self.process_overtime_slip()
         if self.total_overtime_duration < 0:
             LTE.cadforlte(self.custom_reference_document)
+        else:
+            if self.custom_is_overtime_payable_:
+                self.process_overtime_slip()
         
         
     def process_overtime_slip(self):

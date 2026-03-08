@@ -18,6 +18,12 @@ frappe.ui.form.on("Less Time Entry", {
 				}
 			});
 		}
+        frm.set_df_property('overtime_details', 'reqd', 0);
+        document.querySelectorAll(".btn-new").forEach((el) => {
+            if (el.getAttribute("data-doctype") == "Additional Salary") {
+                el.style.display = "none";
+            }
+        });
 	},
 
 	employee(frm) {
