@@ -308,7 +308,9 @@ fixtures = [
                 "Purchase Receipt Item-custom_expiry_date",
                 "Purchase Receipt Item-custom_manufacturing_date",
                 "Cost Center-custom_cr_no",
-                "Warehouse-custom_cr_no"
+                "Warehouse-custom_cr_no",
+                "Cost Center-custom_address",
+                "Cost Center-custom_letter_head"
             ]]
         ]
     }
