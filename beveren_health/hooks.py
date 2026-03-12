@@ -58,7 +58,8 @@ doctype_js = {
     "Holiday List" : "public/js/holiday_list.js",
     "Shift Type" : "public/js/shift_type.js",
     "Shift Assignment" : "public/js/shift_assignment.js",
-    "Employee Checkin" : "public/js/employee_checkin.js"
+    "Employee Checkin" : "public/js/employee_checkin.js",
+    "Cost Center" : "public/js/cost_center.js"
 }
 
 # Svg Icons
@@ -310,7 +311,9 @@ fixtures = [
                 "Cost Center-custom_cr_no",
                 "Warehouse-custom_cr_no",
                 "Cost Center-custom_address",
-                "Cost Center-custom_letter_head"
+                "Cost Center-custom_letter_head",
+                "Cost Center-custom_address_display",
+                "Cost Center-custom_address_html"
             ]]
         ]
     }
