@@ -43,7 +43,7 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -204,6 +204,9 @@ scheduler_events = {
     "weekly": [
         "beveren_health.beveren_health.notifications.employee_notification.notify_document_expiry",
         "beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
+    ],
+    "hourly_long": [
+        "beveren_health.beveren_health.utils.attendance.update_last_sync_for_all_shifts"
     ]
 }
 
