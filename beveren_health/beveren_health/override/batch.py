@@ -42,3 +42,5 @@ def before_save(self, method=None):
 
     if changed:
         frappe.msgprint("Batch dates updated from Purchase Receipt")
+        
+    # batch_before_save(self, method)
