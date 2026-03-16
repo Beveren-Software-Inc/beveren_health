@@ -8,7 +8,7 @@ const BATCH_LABEL_CSS = `
 	.label-page:last-child { page-break-after: auto; }
 	.medication-label { width: 100%; height: 100%; border: 1px solid #000; padding: 5px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
 	.barcode-section { text-align: center; margin-bottom: 5px; background:red}
-	.barcode-section img { max-width: 100%; height: 55px; margin-bottom: 1px; image-rendering: crisp-edges; }
+	.barcode-section img { max-width: 100%; height: 70px; margin-bottom: 1px; image-rendering: crisp-edges; }
 	.details-section { padding-top: 1px; font-size: 7px; line-height: 1.1; text-align: center; width: 100%; }
 	.detail-row { margin-bottom: 1px; line-height: 1.1; }
 	.item-name-line { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 8px; font-weight: bold; margin-bottom: 2px; }
@@ -78,6 +78,24 @@ frappe.ui.form.on("Batch", {
 						const num = Math.max(1, parseInt(values.num_labels, 10) || 1);
 						const cost_center = values.cost_center || "";
 
+						// Fetch the custom_cr_no from Cost Center if selected
+						let branch_display = cost_center;
+						if (cost_center) {
+							frappe.call({
+								method: "frappe.client.get",
+								args: {
+									doctype: "Cost Center",
+									name: cost_center,
+								},
+								async: false, // Use sync call to get the value before proceeding
+								callback(cc_response) {
+									if (cc_response.message) {
+										branch_display = cc_response.message.custom_cr_no || cost_center;
+									}
+								},
+							});
+						}
+
 						frappe.call({
 							method: "beveren_health.beveren_health.utils.label_printing.get_label_data_for_batch",
 							args: { batch_name: frm.doc.name },
@@ -98,7 +116,7 @@ frappe.ui.form.on("Batch", {
 								for (let i = 0; i < num; i++) {
 									labels_html.push(
 										'<div class="label-page">' +
-										build_batch_label_html(data, cost_center) +
+										build_batch_label_html(data, branch_display) +
 										"</div>"
 									);
 								}
@@ -118,48 +136,33 @@ frappe.ui.form.on("Batch", {
 				d.show();
 			}, __("Actions"));
 		}
-		frm.add_custom_button(__('Generate Barcode Image for All Batches'), function() {
-			frappe.call({
-				method: 'beveren_health.beveren_health.utils.batch.generate_barcode_for_existing_batches',
-				freeze: true,
-				freeze_message: __('Generating barcodes for existing batches...'),
-				callback: function(r) {
-					const msg = (r && r.message) ? r.message : __('Barcode generation job completed.');
-					frappe.msgprint(msg);
-				}
-			});
-		}, __("Actions"));
-
-		frm.add_custom_button(__('Generate Barcode for This Batch'), function() {
-			frappe.call({
-				method: 'beveren_health.beveren_health.utils.batch.generate_barcode_image_for_batch',
-				args: { batch_name: frm.doc.name },
-				freeze: true,
-				freeze_message: __('Generating barcode for this batch...'),
-				callback: function() {
-					frm.reload_doc();
-					frappe.show_alert({
-						message: __('Barcode generated for this batch'),
-						indicator: 'green'
-					});
-				}
-			});
-		}, __("Actions"));
-	},
-	before_save: function(frm) {
-		// Optional: regenerate barcode image if needed
-		// if (frm.doc.custom_barcode && !frm.doc.custom_barcode_image) {
-		// 	frm.call({
-		// 		method: 'generate_barcode_image',
-		// 		doc: frm.doc,
+		// frm.add_custom_button(__('Generate Barcode Image for All Batches'), function() {
+		// 	frappe.call({
+		// 		method: 'beveren_health.beveren_health.utils.batch.generate_barcode_for_existing_batches',
+		// 		freeze: true,
+		// 		freeze_message: __('Generating barcodes for existing batches...'),
 		// 		callback: function(r) {
-		// 			frm.refresh_field('custom_barcode_image');
+		// 			const msg = (r && r.message) ? r.message : __('Barcode generation job completed.');
+		// 			frappe.msgprint(msg);
+		// 		}
+		// 	});
+		// }, __("Actions"));
+
+		// frm.add_custom_button(__('Generate Barcode for This Batch'), function() {
+		// 	frappe.call({
+		// 		method: 'beveren_health.beveren_health.utils.batch.generate_barcode_image_for_batch',
+		// 		args: { batch_name: frm.doc.name },
+		// 		freeze: true,
+		// 		freeze_message: __('Generating barcode for this batch...'),
+		// 		callback: function() {
+		// 			frm.reload_doc();
 		// 			frappe.show_alert({
-		// 				message: __('Barcode image generated successfully'),
+		// 				message: __('Barcode generated for this batch'),
 		// 				indicator: 'green'
 		// 			});
 		// 		}
 		// 	});
-		// }
+		// }, __("Actions"));
 	},
+	
 });
