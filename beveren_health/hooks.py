@@ -59,7 +59,9 @@ doctype_js = {
     "Shift Type" : "public/js/shift_type.js",
     "Shift Assignment" : "public/js/shift_assignment.js",
     "Employee Checkin" : "public/js/employee_checkin.js",
-    "Cost Center" : "public/js/cost_center.js"
+    "Cost Center" : "public/js/cost_center.js",
+    "Stock Reconciliation": "public/js/stock_reconciliation.js",
+    "Stock Entry": "beveren_health/public/js/stock_entry.js",
 }
 
 # Svg Icons
@@ -171,7 +173,8 @@ doc_events = {
         "before_save": "beveren_health.beveren_health.customize.shift_type.before_save"
     },
     "Batch": {
-        "before_save": "beveren_health.beveren_health.override.batch.before_save"
+        "before_save": "beveren_health.beveren_health.override.batch.before_save",
+        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save"
     }
 }
 
@@ -316,7 +319,10 @@ fixtures = [
                 "Cost Center-custom_address",
                 "Cost Center-custom_letter_head",
                 "Cost Center-custom_address_display",
-                "Cost Center-custom_address_html"
+                "Cost Center-custom_address_html",
+                "Stock Entry-custom_custom_scanner",
+                "Stock Reconciliation-custom_custom_scanner",
+                "Item Barcode-custom_batch"
             ]]
         ]
     }
