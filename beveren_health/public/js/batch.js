@@ -7,11 +7,11 @@ const BATCH_LABEL_CSS = `
 	.label-page { width: 2.299in; height: 1.5in; padding: 5px; box-sizing: border-box; page-break-after: always; }
 	.label-page:last-child { page-break-after: auto; }
 	.medication-label { width: 100%; height: 100%; border: 1px solid #000; padding: 5px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-	.barcode-section { text-align: center; margin-bottom: 5px; background:red}
+	.barcode-section { text-align: center; margin-bottom: 2px; background-color:red}
 	.barcode-section img { max-width: 100%; height: 70px; margin-bottom: 1px; image-rendering: crisp-edges; }
-	.details-section { padding-top: 1px; font-size: 7px; line-height: 1.1; text-align: center; width: 100%; }
+	.details-section { padding-top: 1px; font-size: 7px; line-height: 1.1; text-align: center; width: 100%; background:red}
 	.detail-row { margin-bottom: 1px; line-height: 1.1; }
-	.item-name-line { font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 8px; font-weight: bold; margin-bottom: 2px; }
+	.item-name-line { font-family: Georgia, 'Times New Roman', serif; font-size: 8px; font-weight: bold; margin-bottom: 2px; }
 	.price-row { font-size: 9px; }
 	.price-value { font-weight: 900; font-size: 9px; }
 	img { max-width: 100%; height: auto; }
@@ -28,7 +28,7 @@ function build_batch_label_html(data, cost_center) {
 	const branch = cost_center || "N/A";
 	return `
 		<div class="medication-label">
-			<div class="details-section" style="border-top: none; padding-top: 0; margin-top: 0; margin-bottom: 3px;">
+			<div class="details-section" style="border-top: none; padding-top: 0; margin-top: 2; margin-bottom: 1px;">
 				<div class="detail-row"><strong>${branch}</strong> </div>
 			</div>
 			<div class="barcode-section">
@@ -36,8 +36,7 @@ function build_batch_label_html(data, cost_center) {
 			</div>
 			<div class="details-section">
 				
-				<div class="detail-row"><strong></strong> ${item_code}</div>
-				<div class="detail-row item-name-line">${item_name_line_val}</div>
+				<div class="detail-row"><span> ${item_code} - </span><span class="item-name-line">${item_name_line_val}</span></div>
 				<div class="detail-row"><strong>Price:</strong> <span class="price-value">${standard_selling_price}</span></div>
 				<div class="detail-row"><strong>Batch No:</strong> ${batch_number}</div>
 				<div class="detail-row"><strong>Expiry Date:</strong> ${expiry_date}</div>
