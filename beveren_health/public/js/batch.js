@@ -7,7 +7,7 @@ const BATCH_LABEL_CSS = `
 	.label-page { width: 2.299in; height: 1.5in; padding: 5px; box-sizing: border-box; page-break-after: always; }
 	.label-page:last-child { page-break-after: auto; }
 	.medication-label { width: 100%; height: 100%; border: 1px solid #000; padding: 5px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
-	.barcode-section { text-align: center; margin-bottom: 2px; background-color:red}
+	.barcode-section { text-align: center; margin-bottom: 2px;}
 	.barcode-section img { max-width: 100%; height: 70px; margin-bottom: 1px; image-rendering: crisp-edges; }
 	.details-section { padding-top: 1px; font-size: 7px; line-height: 1.1; text-align: center; width: 100%; background:red}
 	.detail-row { margin-bottom: 1px; line-height: 1.1; }
@@ -89,7 +89,10 @@ frappe.ui.form.on("Batch", {
 								async: false, // Use sync call to get the value before proceeding
 								callback(cc_response) {
 									if (cc_response.message) {
-										branch_display = cc_response.message.custom_cr_no || cost_center;
+										const raw_name = cc_response.message.name || cost_center;
+										branch_display = raw_name.includes(" - ") 
+											? raw_name.substring(0, raw_name.lastIndexOf(" - ")) 
+											: raw_name;
 									}
 								},
 							});
