@@ -89,10 +89,10 @@ frappe.ui.form.on("Batch", {
 								async: false, // Use sync call to get the value before proceeding
 								callback(cc_response) {
 									if (cc_response.message) {
-										const raw_name = cc_response.message.name || cost_center;
-										branch_display = raw_name.includes(" - ") 
-											? raw_name.substring(0, raw_name.lastIndexOf(" - ")) 
-											: raw_name;
+										console.log("Cost Center details:", cc_response.message);
+										const raw_name = cc_response.message.custom_cr_name || cost_center;
+										branch_display = raw_name
+										
 									}
 								},
 							});
