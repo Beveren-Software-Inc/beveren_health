@@ -46,22 +46,36 @@ class LessTimeEntry(Document):
         # if self.is_less_time_deductible_:
             # self.process_less_time_slip()
 
-        
-    def cadforlte(doc):
+    #old one
+    # def cadforlte(doc):
+    #     doc = frappe.get_doc("Less Time Entry", doc)
+    #     if doc.docstatus == 1:
+    #         if doc.is_less_time_deductible_:
+    #             # if doc.total_overtime_duration <= 0:
+    #             #     doc.flags.ignore_mandatory = True
+    #             # name, total = doc.fetch_less_time_total(doc.employee, doc.start_date, doc.end_date)
+    #             # if name:
+    #             #     doc.custom_reference_document = name
+    #             # if total:
+    #             #     doc.custom_total_less_time_duration = total
+    #             #     doc.custom_total_over_time_duration = doc.total_overtime_duration
+    #             #     doc.total_overtime_duration = doc.custom_total_over_time_duration - doc.custom_total_less_time_duration
+    #             doc.process_less_time_slip()
+    
+    #new one
+    def cadforlte(doc, overtime_slip_name=None):
         doc = frappe.get_doc("Less Time Entry", doc)
         if doc.docstatus == 1:
             if doc.is_less_time_deductible_:
-                # if doc.total_overtime_duration <= 0:
-                #     doc.flags.ignore_mandatory = True
-                # name, total = doc.fetch_less_time_total(doc.employee, doc.start_date, doc.end_date)
-                # if name:
-                #     doc.custom_reference_document = name
-                # if total:
-                #     doc.custom_total_less_time_duration = total
-                #     doc.custom_total_over_time_duration = doc.total_overtime_duration
-                #     doc.total_overtime_duration = doc.custom_total_over_time_duration - doc.custom_total_less_time_duration
+                if overtime_slip_name:
+                    frappe.db.set_value(
+                        "Less Time Entry", doc.name,
+                        "custom_overtime_slip_reference", overtime_slip_name
+                    )
+                    doc.reload()
                 doc.process_less_time_slip()
-        
+
+
     @frappe.whitelist()
     def get_frequency_and_dates(self):
         date = self.posting_date
