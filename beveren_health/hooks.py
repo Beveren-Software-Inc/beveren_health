@@ -48,6 +48,7 @@ doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
+    "Employee" : "beveren_health/public/js/employee.js",
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
@@ -157,6 +158,9 @@ doctype_js = {
 # }
 
 doc_events = {
+    "Employee" : {
+        "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
+    },
     "Sales Invoice" : {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     },
