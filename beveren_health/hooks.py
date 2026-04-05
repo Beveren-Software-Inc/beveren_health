@@ -48,6 +48,7 @@ app_license = "mit"
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
+    "Employee" : "beveren_health/public/js/employee.js",
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Item Group" : "beveren_health/public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
@@ -151,6 +152,9 @@ doctype_js = {
 # }
 
 doc_events = {
+    "Employee" : {
+        "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
+    },
     "Sales Invoice" : {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     },
