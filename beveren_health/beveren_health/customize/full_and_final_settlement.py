@@ -64,13 +64,27 @@ def before_save(self, method):
     self.custom_ir_base = ir_base
 
     # --- Calculate total months worked ---
-    total_months = (self.relieving_date.year - self.date_of_joining.year) * 12 + \
-                   (self.relieving_date.month - self.date_of_joining.month) + 1
-
-    # --- Calculate indemnity ---
-    if years <= 3:
-        indemnity = ir_base * total_months / 24
+    total_days = (self.relieving_date - self.date_of_joining).days + 1
+    
+    if total_days <= 1095:
+        total_eligible_days = total_days * 15 / 365
     else:
-        indemnity = (ir_base * 3 / 2) + (ir_base * (total_months - 3) / 24)
+        total_eligible_days = 45 + ((total_days - 1095) * 30 / 365)
 
-    self.custom_indemnity_reward = flt(indemnity, 2)
+    indemnity = ir_base * 12 * total_eligible_days / 365
+    if indemnity:
+        self.custom_indemnity_reward = flt(indemnity, 3)
+        ap = self.total_payable_amount
+        if ap != 0:
+            self.total_payable_amount = ap + indemnity
+        else:
+            self.total_payable_amount = indemnity
+            
+def on_submit(self, method):
+    if self.custom_indemnity_reward:
+        ap = self.total_payable_amount
+        if ap != 0:
+            self.total_payable_amount = ap + self.custom_indemnity_reward
+        else:
+            self.total_payable_amount = self.custom_indemnity_reward
+    
