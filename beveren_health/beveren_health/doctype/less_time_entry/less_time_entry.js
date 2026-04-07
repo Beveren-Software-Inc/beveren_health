@@ -54,4 +54,23 @@ frappe.ui.form.on("Less Time Entry", {
 			});
 		}
 	},
+	start_date: function(frm) {
+        if (frm.doc.start_date) {
+            let end_date = frappe.datetime.add_days(
+                frappe.datetime.add_months(frm.doc.start_date, 1),
+                -1
+            );
+            frm.set_value('end_date', end_date);
+        }
+    },
+
+    end_date: function(frm) {
+        if (frm.doc.end_date) {
+            let start_date = frappe.datetime.add_days(
+                frappe.datetime.add_months(frm.doc.end_date, -1),
+                1
+            );
+            frm.set_value('start_date', start_date);
+        }
+    }
 });
