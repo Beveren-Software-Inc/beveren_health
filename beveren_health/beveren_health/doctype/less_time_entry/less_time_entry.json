@@ -18,7 +18,9 @@
   "department",
   "is_less_time_deductible_",
   "amended_from",
+  "total_less_time_duration_1",
   "total_less_time_duration",
+  "reference_document",
   "section_break_tkwq",
   "less_time_details"
  ],
@@ -98,9 +100,11 @@
    "reqd": 1
   },
   {
+   "allow_on_submit": 1,
+   "description": "When it is negative in Overtime Slip",
    "fieldname": "total_less_time_duration",
    "fieldtype": "Float",
-   "label": "Total Less Time Duration (in Hours)",
+   "label": "Total Less Time Duration (in Hours) (After Compensation)",
    "read_only": 1
   },
   {
@@ -119,18 +123,32 @@
    "fieldtype": "Select",
    "label": "Series",
    "options": "HR-LT-ENTRY-.employee.-.YY.-.##."
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "reference_document",
+   "fieldtype": "Data",
+   "label": "Reference Document",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "total_less_time_duration_1",
+   "fieldtype": "Float",
+   "label": "Total Less Time Duration (in Hours)",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [
-    {
-        "link_doctype": "Additional Salary",
-        "link_fieldname": "ref_docname"
-    }
-],
- "modified": "2026-01-30 09:41:39.879797",
+  {
+   "link_doctype": "Additional Salary",
+   "link_fieldname": "ref_docname"
+  }
+ ],
+ "modified": "2026-04-07 15:15:32.277639",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Less Time Entry",

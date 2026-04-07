@@ -21,7 +21,7 @@ class OvertimeSlip(BaseOvertimeSlip):
         
     def on_submit(self):
         if self.total_overtime_duration < 0:
-            LTE.cadforlte(self.custom_reference_document)
+            LTE.cadforlte(self.name, self.custom_reference_document, self.total_overtime_duration)
         else:
             if self.custom_is_overtime_payable_:
                 self.process_overtime_slip()
@@ -223,5 +223,5 @@ class OvertimeSlip(BaseOvertimeSlip):
             "end_date" : curr_month_20,
             "is_less_time_deductible_" : 1,
             "docstatus" : 1
-            }, "total_less_time_duration")
+            }, "total_less_time_duration_1")
         return name, total

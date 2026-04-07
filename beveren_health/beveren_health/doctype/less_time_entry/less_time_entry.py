@@ -46,20 +46,14 @@ class LessTimeEntry(Document):
         # if self.is_less_time_deductible_:
             # self.process_less_time_slip()
 
-        
-    def cadforlte(doc):
+    def cadforlte(ref_doc, doc, total_overtime_duration):
         doc = frappe.get_doc("Less Time Entry", doc)
         if doc.docstatus == 1:
             if doc.is_less_time_deductible_:
-                # if doc.total_overtime_duration <= 0:
-                #     doc.flags.ignore_mandatory = True
-                # name, total = doc.fetch_less_time_total(doc.employee, doc.start_date, doc.end_date)
-                # if name:
-                #     doc.custom_reference_document = name
-                # if total:
-                #     doc.custom_total_less_time_duration = total
-                #     doc.custom_total_over_time_duration = doc.total_overtime_duration
-                #     doc.total_overtime_duration = doc.custom_total_over_time_duration - doc.custom_total_less_time_duration
+                doc.flags.ignore_mandatory = True
+                doc.total_less_time_duration = total_overtime_duration * (-1)
+                doc.reference_document = ref_doc
+                doc.db_update()
                 doc.process_less_time_slip()
         
     @frappe.whitelist()
@@ -93,7 +87,7 @@ class LessTimeEntry(Document):
             for detail in self.less_time_details:
                 if detail.less_time_duration is not None:
                     total_less_time_duration += detail.less_time_duration
-            self.total_less_time_duration = total_less_time_duration
+            self.total_less_time_duration_1 = total_less_time_duration
         self.save()
 
     def get_attendance_records(self):
@@ -143,12 +137,11 @@ class LessTimeEntry(Document):
                 
     def process_less_time_slip(self):
         less_time_components = self.get_less_time_component_amounts()
-        precision = frappe.db.get_single_value("System Settings", "currency_precision") or 2
+        precision = frappe.db.get_single_value("System Settings", "currency_precision") or 3
         for component, total_amount in less_time_components.items():
             self.create_additional_salary(component, total_amount, precision)
    
     def get_less_time_component_amounts(self):
-        print(self.less_time_details)
         if not self.less_time_details:
             return {}
 
@@ -205,7 +198,6 @@ class LessTimeEntry(Document):
             applicable_hourly_rate = self._calculate_component_based_hourly_rate(
                 less_time_type, standard_working_hours
             )
-        print(applicable_hourly_rate)
         return applicable_hourly_rate
     
     def _calculate_component_based_hourly_rate(self, less_time_type, standard_working_hours):
@@ -245,15 +237,14 @@ class LessTimeEntry(Document):
 
         if applicable_hourly_rate <= 0:
             return 0.0
-
+        if self.total_less_time_duration:
+            less_time_duration = less_time_duration * self.total_less_time_duration / self.total_less_time_duration_1
         amount = less_time_duration * applicable_hourly_rate 
         return amount
     
     def _bulk_load_less_time_types(self, less_time_type_names):
         if not less_time_type_names:
             return {}
-
-        print("Hello\n\n\n\n\n\n\n\n\n\n")
         less_time_types_data = frappe.get_all(
             "Less Time Type",
             filters={"name": ["in", list(less_time_type_names)]},
