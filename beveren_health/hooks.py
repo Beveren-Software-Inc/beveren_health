@@ -43,20 +43,26 @@ app_license = "mit"
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
     "Employee" : "beveren_health/public/js/employee.js",
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+    "Stock Settings" : "/public/js/stock_settings.js",
+    "Item" : "/public/js/item.js",
+    "Batch" : "public/js/batch.js",
     "Item Group" : "beveren_health/public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
     "Salary Slip" : "public/js/salary_slip.js",
     "Holiday List" : "public/js/holiday_list.js",
     "Shift Type" : "public/js/shift_type.js",
     "Shift Assignment" : "public/js/shift_assignment.js",
-    "Employee Checkin" : "public/js/employee_checkin.js"
+    "Employee Checkin" : "public/js/employee_checkin.js",
+    "Cost Center" : "public/js/cost_center.js",
+    "Stock Reconciliation": "public/js/stock_reconciliation.js",
+    "Stock Entry": "beveren_health/public/js/stock_entry.js",
 }
 
 # Svg Icons
@@ -170,6 +176,10 @@ doc_events = {
     },
     "Shift Type": {
         "before_save": "beveren_health.beveren_health.customize.shift_type.before_save"
+    },
+    "Batch": {
+        "before_save": "beveren_health.beveren_health.override.batch.before_save",
+        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save"
     }
 }
 
@@ -196,9 +206,15 @@ doc_events = {
 # }
 
 scheduler_events = {
+    "daily": [
+        "beveren_health.beveren_health.utils.expiry_movement.move_expired_batches_to_expiry_warehouse",
+    ],
     "weekly": [
         "beveren_health.beveren_health.notifications.employee_notification.notify_document_expiry",
         "beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
+    ],
+    "hourly_long": [
+        "beveren_health.beveren_health.utils.attendance.update_last_sync_for_all_shifts"
     ]
 }
 
@@ -301,6 +317,17 @@ fixtures = [
                 "Purchase Receipt Item-custom_label_print",
                 "Purchase Receipt Item-custom_label_printing",
                 "Item Barcode-custom_image",
+                "Purchase Receipt Item-custom_expiry_date",
+                "Purchase Receipt Item-custom_manufacturing_date",
+                "Cost Center-custom_cr_no",
+                "Warehouse-custom_cr_no",
+                "Cost Center-custom_address",
+                "Cost Center-custom_letter_head",
+                "Cost Center-custom_address_display",
+                "Cost Center-custom_address_html",
+                "Stock Entry-custom_custom_scanner",
+                "Stock Reconciliation-custom_custom_scanner",
+                "Item Barcode-custom_batch"
             ]]
         ]
     }

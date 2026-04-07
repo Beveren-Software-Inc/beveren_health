@@ -55,7 +55,8 @@ class LessTimeEntry(Document):
                 doc.reference_document = ref_doc
                 doc.db_update()
                 doc.process_less_time_slip()
-        
+
+
     @frappe.whitelist()
     def get_frequency_and_dates(self):
         date = self.posting_date

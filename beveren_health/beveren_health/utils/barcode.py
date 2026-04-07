@@ -61,8 +61,8 @@ def generate_barcode_image(barcode_value, barcode_type="EAN13"):
 				'format': 'PNG',
 				'write_text': True,
 				'quiet_zone': 2.0,
-				'module_width': 0.3,
-				'module_height': 15.0,
+				'module_width': 0.5,
+				'module_height': 18.0,
 			})
 		except Exception:
 			# Fallback to default save if options are not supported

@@ -18,7 +18,16 @@ class OvertimeSlip(BaseOvertimeSlip):
             self.custom_total_less_time_duration = total
             self.custom_total_over_time_duration = self.total_overtime_duration
             self.total_overtime_duration = self.custom_total_over_time_duration - self.custom_total_less_time_duration
-        
+    
+    #old one
+    # def on_submit(self):
+    #     if self.total_overtime_duration < 0:
+    #         LTE.cadforlte(self.custom_reference_document)
+    #     else:
+    #         if self.custom_is_overtime_payable_:
+    #             self.process_overtime_slip()
+    
+    #new one
     def on_submit(self):
         if self.total_overtime_duration < 0:
             LTE.cadforlte(self.name, self.custom_reference_document, self.total_overtime_duration)
