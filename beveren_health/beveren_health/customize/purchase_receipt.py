@@ -383,20 +383,71 @@ def get_current_row_index(pr, current_item_code, current_batch_no):
 	return -1
 
 
+# def get_or_create_batch(item_code, batch_no, expiry_date=None):
+# 	if not batch_no:
+# 		return None
+# 	batch_name = frappe.db.get_value("Batch", {"batch_id": batch_no, "item": item_code}, "name")
+# 	if batch_name:
+# 		return frappe.get_cached_doc("Batch", batch_name)
+
+# 	batch = frappe.get_doc({
+# 		"doctype": "Batch",
+# 		"batch_id": batch_no,
+# 		"item": item_code,
+# 		"expiry_date": expiry_date
+# 	})
+# 	batch.insert(ignore_permissions=True)
+# 	frappe.db.commit()
+# 	return batch
+
+# your_app/beveren_health/customize/purchase_receipt.py
+
 def get_or_create_batch(item_code, batch_no, expiry_date=None):
-	if not batch_no:
-		return None
-	batch_name = frappe.db.get_value("Batch", {"batch_id": batch_no, "item": item_code}, "name")
-	if batch_name:
-		return frappe.get_cached_doc("Batch", batch_name)
-
-	batch = frappe.get_doc({
-		"doctype": "Batch",
-		"batch_id": batch_no,
-		"item": item_code,
-		"expiry_date": expiry_date
-	})
-	batch.insert(ignore_permissions=True)
-	frappe.db.commit()
-	return batch
-
+    """Create or get batch with duplicate handling for same batch across different items."""
+    if not batch_no:
+        return None
+    
+    # Step 1: Try to find existing batch for this exact item
+    batch_name = frappe.db.get_value("Batch", {
+        "batch_id": batch_no, 
+        "item": item_code
+    }, "name")
+    
+    if batch_name:
+        return frappe.get_cached_doc("Batch", batch_name)
+    
+    # Step 2: Check if this batch exists for a DIFFERENT item
+    existing_batch = frappe.db.get_value("Batch", {
+        "batch_id": batch_no
+    }, ["name", "item"], as_dict=True)
+    
+    if existing_batch:
+        # Batch exists for different item - create unique version
+        unique_batch_id = f"{batch_no}_{item_code}"
+        
+        frappe.logger().info(f"Batch {batch_no} already exists for item {existing_batch.item}. Creating {unique_batch_id} for {item_code}")
+        
+        batch = frappe.get_doc({
+            "doctype": "Batch",
+            "batch_id": unique_batch_id,
+            "custom_original_batch_id": batch_no,  # Store original batch ID
+            "item": item_code,
+            "expiry_date": expiry_date
+        })
+        batch.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return batch
+    
+    # Step 3: No conflict - create batch normally
+    frappe.logger().info(f"Creating new batch {batch_no} for item {item_code}")
+    
+    batch = frappe.get_doc({
+        "doctype": "Batch",
+        "batch_id": batch_no,
+        "custom_original_batch_id": batch_no,  # Same as batch_id initially
+        "item": item_code,
+        "expiry_date": expiry_date
+    })
+    batch.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return batch

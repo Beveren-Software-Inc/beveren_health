@@ -325,6 +325,7 @@ fixtures = [
                 "Stock Reconciliation-custom_custom_scanner",
                 "Item Barcode-custom_batch",
                 "Purchase Receipt Item-custom_scanner",
+                "Batch-custom_original_batch_id",
             ]]
         ]
     }
