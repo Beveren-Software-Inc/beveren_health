@@ -1,4 +1,4 @@
-// Client Script for Purchase Receipt
+
 
 frappe.ui.form.on('Purchase Receipt', {
     onload: function(frm) {
@@ -64,6 +64,13 @@ frappe.ui.form.on('Purchase Receipt Item', {
         frappe.model.set_value(cdt, cdn, 'custom_scanner', '');
 
         frappe.show_alert({ message: __('Processing scan...'), indicator: 'blue' });
+        
+        console.log("Sending to server:", {
+            barcode_data: barcode,
+            purchase_receipt_name: frm.doc.name,
+            current_item_code: row.item_code,
+            current_batch_no: row.batch_no || ''
+        });
 
         frappe.call({
             method: "beveren_health.beveren_health.customize.purchase_receipt.process_batch_scan",
@@ -107,6 +114,10 @@ frappe.ui.form.on('Purchase Receipt Item', {
                         handle_move_to_existing(frm, result);
                         break;
                 }
+                
+                // ─── SAVE AND RETURN CURSOR ─────────────────────────────────────
+                // After any successful scan, save the document and refocus
+                save_and_refocus_scanner(frm, result);
             },
             error: function(err) {
                 console.error('Scan error:', err);
@@ -115,6 +126,103 @@ frappe.ui.form.on('Purchase Receipt Item', {
         });
     }
 });
+
+
+// ─── Save and refocus function ───────────────────────────────────────────────
+
+function save_and_refocus_scanner(frm, result) {
+    // Show saving indicator
+    frappe.show_alert({ message: __('Saving...'), indicator: 'blue' });
+    
+    // Save the document
+    frm.save_or_update({
+        callback: function() {
+            frappe.show_alert({ message: __('Saved successfully'), indicator: 'green', timeout: 1 });
+            
+            // After save, refocus on the appropriate scanner field
+            setTimeout(function() {
+                refocus_scanner_field(frm, result);
+            }, 300);
+        },
+        error: function() {
+            frappe.msgprint({
+                title: __('Save Error'),
+                indicator: 'red',
+                message: __('Failed to save document. Please check and save manually.')
+            });
+        }
+    });
+}
+
+function refocus_scanner_field(frm, result) {
+    let target_row_idx = null;
+    let target_row_name = null;
+    
+    if (result.action === 'create_new_row') {
+        // For new row, focus on the newly created row
+        let target_row = frm.doc.items.find(r => r.batch_no === result.batch_no);
+        if (target_row) {
+            target_row_idx = frm.doc.items.findIndex(r => r.name === target_row.name);
+            target_row_name = target_row.name;
+        }
+    } else if (result.action === 'move_to_existing') {
+        // For move to existing, focus on the existing row
+        target_row_idx = result.existing_row_index;
+        if (target_row_idx !== undefined && frm.doc.items[target_row_idx]) {
+            target_row_name = frm.doc.items[target_row_idx].name;
+        }
+    } else {
+        // For assign_to_current and append_serial, focus on the current row
+        // The current row is the one that was just updated
+        if (result.row_name) {
+            target_row_name = result.row_name;
+            target_row_idx = frm.doc.items.findIndex(r => r.name === result.row_name);
+        }
+    }
+    
+    // If we couldn't determine by row_name, try to find by batch_no
+    if (!target_row_name && result.batch_no) {
+        let target_row = frm.doc.items.find(r => r.batch_no === result.batch_no);
+        if (target_row) {
+            target_row_name = target_row.name;
+            target_row_idx = frm.doc.items.findIndex(r => r.name === target_row.name);
+        }
+    }
+    
+    // If we still don't have a target, use the current focused row
+    if (!target_row_name && frm.current_focused_row !== null && frm.doc.items[frm.current_focused_row]) {
+        target_row_name = frm.doc.items[frm.current_focused_row].name;
+        target_row_idx = frm.current_focused_row;
+    }
+    
+    // Focus on the scanner field of the target row
+    if (target_row_name) {
+        setTimeout(function() {
+            // Find the scanner field in the grid
+            let grid = frm.fields_dict['items'].grid;
+            if (grid && grid.grid_rows_by_docname) {
+                let grid_row = grid.grid_rows_by_docname[target_row_name];
+                if (grid_row && grid_row.columns) {
+                    // Find the custom_scanner field in this row
+                    let scanner_field = grid_row.columns.find(col => col.fieldname === 'custom_scanner');
+                    if (scanner_field && scanner_field.$input) {
+                        scanner_field.$input.focus();
+                        if (target_row_idx !== null) {
+                            highlight_row(frm, target_row_idx);
+                            scroll_to_row(frm, target_row_idx);
+                        }
+                    } else {
+                        // Fallback: try to focus on any input in the row
+                        let $row = grid_row.$row;
+                        if ($row) {
+                            $row.find('input:first').focus();
+                        }
+                    }
+                }
+            }
+        }, 100);
+    }
+}
 
 
 // ─── Case 1 ───────────────────────────────────────────────────────────────────
@@ -256,7 +364,6 @@ function highlight_row(frm, row_idx) {
         $rows.removeClass('row-highlight');
         if ($rows[row_idx]) {
             $($rows[row_idx]).addClass('row-highlight');
-            $($rows[row_idx]).find('input:first').focus();
         }
     }, 150);
 }
@@ -264,9 +371,21 @@ function highlight_row(frm, row_idx) {
 function scroll_to_row(frm, row_idx) {
     setTimeout(function() {
         if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
+        
         let $rows = frm.fields_dict['items'].grid.wrapper.find('.grid-row');
-        if ($rows[row_idx]) {
-            $rows[row_idx][0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Check if the row exists
+        if ($rows.length > row_idx && $rows[row_idx]) {
+            let rowElement = $rows[row_idx];
+            
+            // Check if it's a jQuery object or DOM element
+            if (rowElement && typeof rowElement.scrollIntoView === 'function') {
+                rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (rowElement && rowElement[0] && typeof rowElement[0].scrollIntoView === 'function') {
+                rowElement[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else if (rowElement && rowElement.length && rowElement[0]) {
+                rowElement[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
     }, 200);
 }
