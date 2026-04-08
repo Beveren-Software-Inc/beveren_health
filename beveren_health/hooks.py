@@ -50,6 +50,10 @@ doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 doctype_js = {
     # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Purchase Receipt":"public/js/purchase_receipt.js",
+
+    "Employee" : "beveren_health/public/js/employee.js",
+#     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
     "Batch" : "public/js/batch.js",
@@ -158,11 +162,15 @@ doctype_js = {
 # }
 
 doc_events = {
+    "Employee" : {
+        "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
+    },
     "Sales Invoice" : {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     },
     "Full and Final Statement" : {
-        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save",
+        "on_submit" : "beveren_health.beveren_health.customize.full_and_final_settlement.on_submit"
     },
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
