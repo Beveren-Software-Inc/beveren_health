@@ -1,6 +1,8 @@
 
 
 import frappe
+from erpnext.stock.doctype.batch.batch import Batch
+
 
 
 def before_save(self, method=None):
@@ -46,8 +48,6 @@ def before_save(self, method=None):
         
     # batch_before_save(self, method)
     
-from erpnext.stock.doctype.batch.batch import Batch
-import frappe
 
 class CustomBatch(Batch):
 
@@ -67,6 +67,6 @@ class CustomBatch(Batch):
             )
       
             self.batch_id = new_batch_id
-            self.name = new_batch_id  # Update the document name to match the new batch_id
+            self.name = new_batch_id
            
         super().validate()
