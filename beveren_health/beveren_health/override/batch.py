@@ -52,6 +52,7 @@ def before_save(self, method=None):
 class CustomBatch(Batch):
 
     def validate(self):
+        original_batch_id = self.batch_id
         existing_batch = frappe.db.get_value(
             "Batch",
             {"batch_id": self.batch_id},
@@ -68,5 +69,6 @@ class CustomBatch(Batch):
       
             self.batch_id = new_batch_id
             self.name = new_batch_id
+            self.custom_original_batch_id = original_batch_id
            
         super().validate()
