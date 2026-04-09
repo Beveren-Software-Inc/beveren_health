@@ -183,7 +183,8 @@ doc_events = {
     },
     "Batch": {
         "before_save": "beveren_health.beveren_health.override.batch.before_save",
-        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save"
+        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save",
+        # "validate": "beveren_health.beveren_health.override.batch.validate_batch"
     }
 }
 
@@ -233,8 +234,11 @@ scheduler_events = {
 #
 # Specify custom mixins to extend the standard doctype controller.
 extend_doctype_class = {
-	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip"
+	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip",
+ "Batch": "beveren_health.beveren_health.override.batch.CustomBatch"
 }
+
+
 
 # Overriding Methods
 # ------------------------------
