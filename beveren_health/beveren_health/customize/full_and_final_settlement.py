@@ -74,11 +74,11 @@ def before_save(self, method):
     indemnity = ir_base * 12 * total_eligible_days / 365
     if indemnity:
         self.custom_indemnity_reward = flt(indemnity, 3)
-        ap = self.total_payable_amount
-        if ap != 0:
-            self.total_payable_amount = ap + indemnity
-        else:
-            self.total_payable_amount = indemnity
+        # ap = self.total_payable_amount
+        # if ap != 0:
+        #     self.total_payable_amount = ap + indemnity
+        # else:
+        #     self.total_payable_amount = indemnity
             
 def on_submit(self, method):
     if self.custom_indemnity_reward:
