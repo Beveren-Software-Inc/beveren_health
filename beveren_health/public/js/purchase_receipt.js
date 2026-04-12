@@ -73,13 +73,14 @@ frappe.ui.form.on('Purchase Receipt Item', {
         });
 
         frappe.call({
-            method: "beveren_health.beveren_health.customize.purchase_receipt.process_batch_scan",
+            method: "beveren_health.beveren_health.customize.scanner.process_batch_scan",
             args: {
-                barcode_data: barcode,
-                purchase_receipt_name: frm.doc.name,
-                current_item_code: row.item_code,
-                current_batch_no: row.batch_no || ''
-            },
+        barcode_data: barcode,
+        document_name: frm.doc.name,
+        doctype: 'Purchase Receipt',
+        current_item_code: row.item_code,
+        current_batch_no: row.batch_no || ''
+    },
             callback: function(r) {
                 if (!r.message || !r.message.success) {
                     frappe.msgprint({
