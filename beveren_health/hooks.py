@@ -338,6 +338,13 @@ fixtures = [
                 "Item Barcode-custom_batch",
                 "Purchase Receipt Item-custom_scanner",
                 "Batch-custom_original_batch_id",
+                "Stock Entry Detail-custom_expiry_date",
+                "Stock Entry Detail-custom_manufacturing_date",
+                "Stock Reconciliation Item-custom_expiry_date",
+                "Stock Reconciliation Item-custom_manufacturing_date",
+                "Stock Reconciliation Item-custom_scanner",
+                "Stock Entry Detail-custom_scanner",
+                "Stock Entry Detail-custom_column_break_ikwni"
             ]]
         ]
     }
