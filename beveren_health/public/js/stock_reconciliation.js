@@ -682,6 +682,8 @@ function refocus_scanner_field(frm, result) {
 // ─── Case 1 ───────────────────────────────────────────────────────────────────
 
 function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
+
+    console.log("Assigning to current row:", { cdt, cdn, result, row_idx });
     frappe.model.set_value(cdt, cdn, 'batch_no', result.batch_no);
     frappe.model.set_value(cdt, cdn, 'warehouse', warehouse);
     frappe.model.set_value(cdt, cdn, 'qty', 1);
@@ -695,6 +697,9 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
     if (result.expiry_date) {
         frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
         frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
+    }
+        if (result.gtin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
     }
     if (result.mfg_date) {
         frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
@@ -713,12 +718,37 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
 
 // ─── Case 2 ───────────────────────────────────────────────────────────────────
 
+// function handle_append_serial(frm, cdt, cdn, result, row_idx) {
+//     frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
+//     frappe.model.set_value(cdt, cdn, 'current_qty', result.new_qty);
+//     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
+//     frappe.model.set_value(cdt, cdn, 'current_amount', result.new_amount);
+//     frappe.model.set_value(cdt, cdn, 'serial_no', result.all_serials);
+
+//     frm.refresh_field('items');
+//     frm.current_focused_row = row_idx;
+//     highlight_row(frm, row_idx);
+//     scroll_to_row(frm, row_idx);
+
+//     frappe.show_alert({
+//         message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
+//         indicator: 'green'
+//     });
+// }
+
+// ─── Case 2 ───────────────────────────────────────────────────────────────────
+
 function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
     frappe.model.set_value(cdt, cdn, 'current_qty', result.new_qty);
     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
     frappe.model.set_value(cdt, cdn, 'current_amount', result.new_amount);
     frappe.model.set_value(cdt, cdn, 'serial_no', result.all_serials);
+    
+    // ADD THIS - Set custom_gstin if present in result
+    if (result.gtin) {
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
+    }
 
     frm.refresh_field('items');
     frm.current_focused_row = row_idx;
@@ -730,10 +760,10 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
         indicator: 'green'
     });
 }
-
 // ─── Case 3 ───────────────────────────────────────────────────────────────────
 
 function handle_create_new_row(frm, result, warehouse) {
+    console.log("Creating new row for different batch:", { result });
     let new_row = frm.add_child('items', {
         item_code: result.item_code,
         item_name: result.item_name,
@@ -749,6 +779,7 @@ function handle_create_new_row(frm, result, warehouse) {
         expiry_date: result.expiry_date || '',
         custom_expiry_date: result.expiry_date || '',
         custom_manufacturing_date: result.mfg_date || '',
+        custom_gstin: result.gtin || '',
 		use_serial_batch_fields:1
     });
 
@@ -768,6 +799,7 @@ function handle_create_new_row(frm, result, warehouse) {
 // ─── Case 4 ───────────────────────────────────────────────────────────────────
 
 function handle_move_to_existing(frm, result) {
+    console.log("Moving to existing row:", { result });
     let target_idx = result.existing_row_index;
     let target_row = frm.doc.items[target_idx];
 
@@ -795,6 +827,9 @@ function handle_move_to_existing(frm, result) {
             frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
             frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
         }
+         if (result.gtin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
+    }
         if (result.mfg_date && !target_row.custom_manufacturing_date) {
             frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
         }

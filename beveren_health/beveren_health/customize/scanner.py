@@ -104,7 +104,8 @@ def process_batch_scan(barcode_data, document_name, doctype, current_item_code=N
                     "item_code": item_code,
                     "item_name": item.item_name,
                     "expiry_date": parsed.get('expiry_date'),
-                    "mfg_date": parsed.get('mfg_date')
+                    "mfg_date": parsed.get('mfg_date'),
+                    "gtin": parsed.get('gtin')
                 }
         else:
             # Batch doesn't exist anywhere in document
@@ -140,7 +141,8 @@ def assign_to_current_row(config, item, parsed, warehouse=None):
         "mfg_date": parsed.get('mfg_date'),
         "qty": 1,
         "rate": frappe.db.get_value("Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate") or 0,
-        "warehouse": warehouse
+        "warehouse": warehouse,
+        "gtin": parsed.get('gtin')
     }
 
 def append_serial_to_row(doc, config, row, parsed, item):
@@ -163,6 +165,10 @@ def append_serial_to_row(doc, config, row, parsed, item):
         'serial_no': serial_no
     }
     
+    # Also update custom_gstin if present in parsed and not already set on row
+    if parsed.get('gtin') and not row.get('custom_gstin'):
+        update_values['custom_gstin'] = parsed.get('gtin')
+    
     # Add doctype-specific fields
     for field, source_field in config['additional_fields'].items():
         if source_field == 'qty':
@@ -184,8 +190,52 @@ def append_serial_to_row(doc, config, row, parsed, item):
         "serial_no": parsed.get('serial_no'),
         "all_serials": serial_no,
         "item_name": item.item_name,
-        "batch_no": parsed['batch_no']
+        "batch_no": parsed['batch_no'],
+        "gtin": parsed.get('gtin')  # ADD THIS LINE
     }
+# def append_serial_to_row(doc, config, row, parsed, item):
+#     """Case 2 – same batch scanned again: append serial, recalculate qty from serial count."""
+#     serial_no = row.serial_no or ''
+    
+#     new_serial = parsed.get('serial_no')
+#     if new_serial and new_serial not in serial_no:
+#         serial_no = (serial_no + '\n' + new_serial).strip()
+    
+#     # Qty = number of serials tracked (one unit per serial)
+#     serial_count = len([s for s in serial_no.split('\n') if s.strip()]) if serial_no else 1
+#     new_qty = serial_count if serial_no else (row.qty or 0) + 1
+#     new_amount = new_qty * (row.rate or 0)
+    
+#     # Prepare update values
+#     update_values = {
+#         config['qty_field']: new_qty,
+#         config['amount_field']: new_amount,
+#         'serial_no': serial_no
+#     }
+    
+#     # Add doctype-specific fields
+#     for field, source_field in config['additional_fields'].items():
+#         if source_field == 'qty':
+#             update_values[field] = new_qty
+#         elif source_field == 'amount':
+#             update_values[field] = new_amount
+#         elif source_field == 'rate':
+#             update_values[field] = row.rate
+    
+#     frappe.db.set_value(config['child_doctype'], row.name, update_values)
+#     doc.reload()
+    
+#     return {
+#         "success": True,
+#         "action": "append_serial",
+#         "row_name": row.name,
+#         "new_qty": new_qty,
+#         "new_amount": new_amount,
+#         "serial_no": parsed.get('serial_no'),
+#         "all_serials": serial_no,
+#         "item_name": item.item_name,
+#         "batch_no": parsed['batch_no']
+#     }
 
 def create_new_row(config, item, parsed, warehouse=None):
     """Case 3 – different batch, current row already used: signal JS to add a new child row."""
@@ -196,7 +246,7 @@ def create_new_row(config, item, parsed, warehouse=None):
         {"item_code": item.name, "buying": 1},
         "price_list_rate"
     ) or 0
-    
+    # DEBUG
     return {
         "success": True,
         "action": "create_new_row",
@@ -210,35 +260,189 @@ def create_new_row(config, item, parsed, warehouse=None):
         "serial_no": parsed.get('serial_no'),
         "expiry_date": parsed.get('expiry_date'),
         "mfg_date": parsed.get('mfg_date'),
-        "warehouse": warehouse
+        "warehouse": warehouse,
+        "gtin": parsed.get('gtin')
     }
 
 # ─── Barcode parsing ──────────────────────────────────────────────────────────
 
+# def parse_barcode(barcode_data):
+#     """Parse GS1 barcode or return as batch number if not GS1 format."""
+#     if not barcode_data:
+#         return {'batch_no': None, 'serial_no': None, 'gtin': None,
+#                 'expiry_date': None, 'mfg_date': None, 'raw': barcode_data}
+    
+#     barcode_data = barcode_data.strip()
+    
+#     if barcode_data.startswith('01'):
+#         return parse_gs1(barcode_data)
+#     else:
+#         return {'batch_no': barcode_data, 'serial_no': None, 'gtin': None,
+#                 'expiry_date': None, 'mfg_date': None, 'raw': barcode_data}
+
 def parse_barcode(barcode_data):
-    """Parse GS1 barcode or return as batch number if not GS1 format."""
+    """Parse GS1 barcode supporting multiple formats:
+    1. Parentheses format: (01)GTIN(21)Serial(17)EXP(10)Batch
+    2. Raw GS1 with/without separators
+    3. Simple batch number
+    """
     if not barcode_data:
         return {'batch_no': None, 'serial_no': None, 'gtin': None,
                 'expiry_date': None, 'mfg_date': None, 'raw': barcode_data}
     
     barcode_data = barcode_data.strip()
     
-    if barcode_data.startswith('01'):
+    # Check if it's the parentheses format (contains ')' and '(' pattern)
+    if ')' in barcode_data and '(' in barcode_data:
+        return parse_parentheses_gs1(barcode_data)
+    # Check if it starts with '01' (raw GS1 format)
+    elif barcode_data.startswith('01'):
         return parse_gs1(barcode_data)
     else:
+        # Simple batch number only
         return {'batch_no': barcode_data, 'serial_no': None, 'gtin': None,
                 'expiry_date': None, 'mfg_date': None, 'raw': barcode_data}
 
-def parse_gs1(raw_code):
-    """Parse GS1 barcode by handling GS separators and fixed-length AIs properly."""
+def parse_parentheses_gs1(raw_code):
+    """
+    Parse GS1 barcode in parentheses format:
+    (01)GTIN(21)Serial(17)EXP(10)Batch
+    
+    Example: (01)08002660032249(21)100285731569(17)270731(10)729323
+    """
     result = {
-        'batch_no': None, 'serial_no': None, 'gtin': None,
-        'expiry_date': None, 'mfg_date': None, 'raw': raw_code
+        'batch_no': None, 
+        'serial_no': None, 
+        'gtin': None,
+        'expiry_date': None, 
+        'mfg_date': None, 
+        'raw': raw_code
+    }
+    
+    frappe.logger().info(f"Parsing parentheses GS1: {raw_code}")
+    
+    # Find all patterns like (XX)value
+    # Using regex to find all occurrences of (digits) followed by content until next ( or end
+    pattern = r'\((\d{2})\)([^\(]*)'
+    matches = re.findall(pattern, raw_code)
+    
+    for ai, value in matches:
+        value = value.strip()
+        
+        if ai == '01':
+            result['gtin'] = value
+            frappe.logger().info(f"Found GTIN: {value}")
+        
+        elif ai == '10':
+            result['batch_no'] = value
+            frappe.logger().info(f"Found Batch: {value}")
+        
+        elif ai == '11':
+            result['mfg_date'] = _parse_date(value)
+            frappe.logger().info(f"Found MFG Date: {value} -> {result['mfg_date']}")
+        
+        elif ai == '17':
+            result['expiry_date'] = _parse_date(value)
+            frappe.logger().info(f"Found EXP Date: {value} -> {result['expiry_date']}")
+        
+        elif ai == '21':
+            result['serial_no'] = value
+            frappe.logger().info(f"Found Serial: {value}")
+        
+        else:
+            frappe.logger().warning(f"Unknown AI in parentheses format: {ai} = {value}")
+    
+    # Also check for custom_gstin if present (some formats might use different AI)
+    # For now, we don't have a specific AI for GSTIN, but if needed:
+    # Look for AI '30' or '241' or other common GSTIN identifiers
+    gstin_pattern = r'\(30\)([^\(]*)'  # Example: AI 30 sometimes used for GSTIN
+    gstin_match = re.search(gstin_pattern, raw_code)
+    if gstin_match:
+        result['gtin'] = gstin_match.group(1).strip()
+    
+    frappe.logger().info(f"Parentheses parse result: {result}")
+    return result
+
+# def parse_gs1(raw_code):
+#     """Parse GS1 barcode by handling GS separators and fixed-length AIs properly."""
+#     result = {
+#         'batch_no': None, 'serial_no': None, 'gtin': None,
+#         'expiry_date': None, 'mfg_date': None, 'raw': raw_code
+#     }
+    
+#     frappe.logger().info(f"Raw GS1 Code: {repr(raw_code)}")
+    
+#     # Handle GS separator by splitting into logical segments
+#     segments = []
+#     if '\x1d' in raw_code:
+#         segments = raw_code.split('\x1d')
+#     else:
+#         segments = [raw_code]
+    
+#     for segment in segments:
+#         if not segment:
+#             continue
+        
+#         pos = 0
+#         seg_len = len(segment)
+        
+#         while pos < seg_len:
+#             if pos + 2 > seg_len:
+#                 break
+            
+#             ai = segment[pos:pos+2]
+            
+#             if ai == '01' and pos + 2 + 14 <= seg_len:
+#                 result['gtin'] = segment[pos+2:pos+2+14]
+#                 pos += 2 + 14
+            
+#             elif ai == '11' and pos + 2 + 6 <= seg_len:
+#                 result['mfg_date'] = _parse_date(segment[pos+2:pos+2+6])
+#                 pos += 2 + 6
+            
+#             elif ai == '17' and pos + 2 + 6 <= seg_len:
+#                 result['expiry_date'] = _parse_date(segment[pos+2:pos+2+6])
+#                 pos += 2 + 6
+            
+#             elif ai == '10':
+#                 # Batch - variable length
+#                 remaining = segment[pos+2:]
+#                 next_ai_pos = len(remaining)
+#                 for next_ai in ['01', '11', '17']:
+#                     found = remaining.find(next_ai)
+#                     if found != -1 and found < next_ai_pos:
+#                         next_ai_pos = found
+#                 result['batch_no'] = remaining[:next_ai_pos]
+#                 pos = seg_len
+            
+#             elif ai == '21':
+#                 # Serial - variable length, usually last field
+#                 result['serial_no'] = segment[pos+2:]
+#                 pos = seg_len
+            
+#             else:
+#                 # Unknown AI, skip ahead by 1
+#                 pos += 1
+    
+#     frappe.logger().info(f"Final parsed result: {result}")
+#     return result
+
+def parse_gs1(raw_code):
+    """
+    Parse raw GS1 barcode (without parentheses) by handling GS separators and fixed-length AIs.
+    """
+    result = {
+        'batch_no': None, 
+        'serial_no': None, 
+        'gtin': None,
+        'expiry_date': None, 
+        'mfg_date': None, 
+        'raw': raw_code
     }
     
     frappe.logger().info(f"Raw GS1 Code: {repr(raw_code)}")
     
-    # Handle GS separator by splitting into logical segments
+    # First, try to see if it has the GS separator
     segments = []
     if '\x1d' in raw_code:
         segments = raw_code.split('\x1d')
@@ -274,7 +478,7 @@ def parse_gs1(raw_code):
                 # Batch - variable length
                 remaining = segment[pos+2:]
                 next_ai_pos = len(remaining)
-                for next_ai in ['01', '11', '17']:
+                for next_ai in ['01', '11', '17', '21']:
                     found = remaining.find(next_ai)
                     if found != -1 and found < next_ai_pos:
                         next_ai_pos = found
@@ -290,18 +494,30 @@ def parse_gs1(raw_code):
                 # Unknown AI, skip ahead by 1
                 pos += 1
     
-    frappe.logger().info(f"Final parsed result: {result}")
+    frappe.logger().info(f"Raw GS1 parse result: {result}")
     return result
+
 
 def _parse_date(date_str):
     """Convert YYMMDD → YYYY-MM-DD."""
     try:
-        yy = int(date_str[0:2])
-        mm = date_str[2:4]
-        dd = date_str[4:6]
-        year = 2000 + yy if yy < 50 else 1900 + yy
-        return f"{year}-{mm}-{dd}"
-    except Exception:
+        # Handle both 6-digit (YYMMDD) and 4-digit (YYMM) formats
+        if len(date_str) == 6:
+            yy = int(date_str[0:2])
+            mm = date_str[2:4]
+            dd = date_str[4:6]
+            year = 2000 + yy if yy < 50 else 1900 + yy
+            return f"{year}-{mm}-{dd}"
+        elif len(date_str) == 4:
+            # Handle YYMM format (first day of month)
+            yy = int(date_str[0:2])
+            mm = date_str[2:4]
+            year = 2000 + yy if yy < 50 else 1900 + yy
+            return f"{year}-{mm}-01"
+        else:
+            return None
+    except Exception as e:
+        frappe.logger().warning(f"Date parse error for '{date_str}': {e}")
         return None
 
 # ─── Lookup helpers ───────────────────────────────────────────────────────────
