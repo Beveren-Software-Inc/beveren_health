@@ -154,12 +154,97 @@ def generate_barcodes_for_item_group(item_group):
 		"message": "Barcode generation has been started in the background. You will be notified when it completes.",
 	}
 
+# @frappe.whitelist()
+# def reverse_uom_conversions(item_group):
+#     """
+#     Reverse UOM conversions for all items in the item group
+#     Changes from Unit/Nos-based to Pack-based
+#     Handles: PACK↔Unit and PACK↔Nos
+#     """
+    
+#     # Get all items in this item group
+#     items = frappe.get_all("Item", 
+#         filters={"item_group": item_group},
+#         fields=["name"]
+#     )
+   
+#     updated_items = []
+#     errors = []
+    
+#     for item in items:
+#         try:
+#             item_doc = frappe.get_doc("Item", item.name)
+            
+#             # Check if item has UOM conversions
+#             if not item_doc.uoms:
+#                 continue
+            
+#             # First pass: Find the old PACK conversion factor
+#             old_pack_conversion = None
+#             for uom_row in item_doc.uoms:
+#                 if uom_row.uom in ["PACK", "Pack"]:
+#                     old_pack_conversion = uom_row.conversion_factor
+#                     break
+            
+#             # If no PACK found or it's already 1, skip
+#             if not old_pack_conversion or old_pack_conversion == 1:
+#                 continue
+            
+#             conversion_updated = False
+            
+#             # Second pass: Update conversions
+#             for uom_row in item_doc.uoms:
+#                 if uom_row.uom in ["PACK", "Pack"]:
+#                     # Set PACK as base (1)
+#                     uom_row.conversion_factor = 1
+#                     conversion_updated = True
+                    
+#                 elif uom_row.uom in ["Unit","UNITS", "UNIT", "Nos", "NOS", "nos"]:
+#                     # Set to 1/old_pack_conversion
+#                     # Old: PACK=30, Unit=1
+#                     # New: PACK=1, Unit=1/30
+#                     uom_row.conversion_factor = 1 / old_pack_conversion
+#                     conversion_updated = True
+            
+#             if conversion_updated:
+#                 item_doc.save()
+#                 updated_items.append(item.name)
+                
+#         except Exception as e:
+#             errors.append(f"{item.name}: {str(e)}")
+    
+#     return {
+#         "success": True,
+#         "updated_count": len(updated_items),
+#         "updated_items": updated_items,
+#         "errors": errors
+#     }
+
 @frappe.whitelist()
-def reverse_uom_conversions(item_group):
+def reverse_uom_conversions_async(item_group):
     """
-    Reverse UOM conversions for all items in the item group
-    Changes from Unit/Nos-based to Pack-based
-    Handles: PACK↔Unit and PACK↔Nos
+    Enqueue UOM conversion reversal to run in background
+    Returns immediately with job info
+    """
+    frappe.enqueue(
+        method='beveren_health.beveren_health.customize.item_group.reverse_uom_conversions_background',
+        queue='long',  # Use 'long' queue for time-consuming tasks
+        timeout=1200,  # 1 hour timeout
+        is_async=True,
+        job_name=f'UOM Reversal: {item_group}',
+        item_group=item_group
+    )
+    
+    return {
+        "success": True,
+        "message": f"UOM conversion reversal started for {item_group}. You'll be notified when complete."
+    }
+
+
+def reverse_uom_conversions_background(item_group):
+    """
+    Background worker function - DO NOT call directly
+    This runs in the background queue
     """
     
     # Get all items in this item group
@@ -201,8 +286,6 @@ def reverse_uom_conversions(item_group):
                     
                 elif uom_row.uom in ["Unit","UNITS", "UNIT", "Nos", "NOS", "nos"]:
                     # Set to 1/old_pack_conversion
-                    # Old: PACK=30, Unit=1
-                    # New: PACK=1, Unit=1/30
                     uom_row.conversion_factor = 1 / old_pack_conversion
                     conversion_updated = True
             
@@ -212,6 +295,20 @@ def reverse_uom_conversions(item_group):
                 
         except Exception as e:
             errors.append(f"{item.name}: {str(e)}")
+            frappe.log_error(f"UOM Reversal Error for {item.name}", str(e))
+    
+    # Commit the transaction
+    frappe.db.commit()
+    
+    # Send real-time notification
+    frappe.publish_realtime(
+        event='uom_reversal_complete',
+        message={
+            'item_group': item_group,
+            'updated_count': len(updated_items),
+            'error_count': len(errors)
+        }
+    )
     
     return {
         "success": True,
