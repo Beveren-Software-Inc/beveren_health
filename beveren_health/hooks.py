@@ -185,7 +185,21 @@ doc_events = {
         "before_save": "beveren_health.beveren_health.override.batch.before_save",
         "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save",
         # "validate": "beveren_health.beveren_health.override.batch.validate_batch"
+    },
+    
+    "Serial No": {
+        "before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"
+    },
+    "Purchase Receipt": {
+        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
+    },
+    "Stock Reconciliation": {
+        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
+    },
+    "Stock Entry": {
+        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
     }
+    
 }
 
 
@@ -344,7 +358,12 @@ fixtures = [
                 "Stock Reconciliation Item-custom_manufacturing_date",
                 "Stock Reconciliation Item-custom_scanner",
                 "Stock Entry Detail-custom_scanner",
-                "Stock Entry Detail-custom_column_break_ikwni"
+                "Stock Entry Detail-custom_column_break_ikwni",
+                "Stock Reconciliation Item-custom_gstin",
+                "Stock Entry Detail-custom_gstin",
+                "Purchase Receipt Item-custom_gstin",
+                "Serial No-custom_gtin",
+            
             ]]
         ]
     }
