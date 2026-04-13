@@ -502,16 +502,16 @@ frappe.ui.form.on('Stock Reconciliation Item', {
         // Clear scanner immediately so it is ready for the next scan
         frappe.model.set_value(cdt, cdn, 'custom_scanner', '');
 
-        frappe.show_alert({ message: __('Processing scan...'), indicator: 'blue' });
+        // frappe.show_alert({ message: __('Processing scan...'), indicator: 'blue' });
         
         // Check if this is a new document (not saved yet)
         if (frm.is_new()) {
             // For new documents, save first to create the document in database
-            frappe.show_alert({ message: __('First, saving document...'), indicator: 'orange' });
+            // frappe.show_alert({ message: __('First, saving document...'), indicator: 'orange' });
             
             frm.save_or_update({
                 callback: function() {
-                    frappe.show_alert({ message: __('Document saved, processing scan...'), indicator: 'blue' });
+                    // frappe.show_alert({ message: __('Document saved, processing scan...'), indicator: 'blue' });
                     // After save, process the scan with the new document name
                     process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse);
                 },
@@ -531,14 +531,7 @@ frappe.ui.form.on('Stock Reconciliation Item', {
 });
 
 function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
-    console.log("Sending to server:", {
-        barcode_data: barcode,
-        document_name: frm.doc.name,
-        doctype: 'Stock Reconciliation',
-        current_item_code: row.item_code,
-        current_batch_no: row.batch_no || '',
-        warehouse: warehouse
-    });
+   
 
     frappe.call({
         method: "beveren_health.beveren_health.customize.scanner.process_batch_scan",
@@ -591,7 +584,7 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 
 function save_and_refocus_scanner(frm, result) {
     // Show saving indicator
-    frappe.show_alert({ message: __('Saving...'), indicator: 'blue' });
+    // frappe.show_alert({ message: __('Saving...'), indicator: 'blue' });
     
     // Save the document
     frm.save_or_update({
@@ -683,13 +676,13 @@ function refocus_scanner_field(frm, result) {
 
 function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
 
-    console.log("Assigning to current row:", { cdt, cdn, result, row_idx });
     frappe.model.set_value(cdt, cdn, 'batch_no', result.batch_no);
     frappe.model.set_value(cdt, cdn, 'warehouse', warehouse);
     frappe.model.set_value(cdt, cdn, 'qty', 1);
     frappe.model.set_value(cdt, cdn, 'current_qty', 1);
     frappe.model.set_value(cdt, cdn, 'amount', result.amount || 0);
     frappe.model.set_value(cdt, cdn, 'current_amount', result.amount || 0);
+    frappe.model.set_value(cdt, cdn, 'allow_zero_valuation_rate', 1);
 
     if (result.serial_no) {
         frappe.model.set_value(cdt, cdn, 'serial_no', result.serial_no);
@@ -744,6 +737,7 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
     frappe.model.set_value(cdt, cdn, 'current_amount', result.new_amount);
     frappe.model.set_value(cdt, cdn, 'serial_no', result.all_serials);
+    frappe.model.set_value(cdt, cdn, 'allow_zero_valuation_rate', 1);
     
     // ADD THIS - Set custom_gstin if present in result
     if (result.gtin) {
@@ -755,10 +749,10 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     highlight_row(frm, row_idx);
     scroll_to_row(frm, row_idx);
 
-    frappe.show_alert({
-        message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
-        indicator: 'green'
-    });
+    // frappe.show_alert({
+    //     message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
+    //     indicator: 'green'
+    // });
 }
 // ─── Case 3 ───────────────────────────────────────────────────────────────────
 
@@ -780,7 +774,8 @@ function handle_create_new_row(frm, result, warehouse) {
         custom_expiry_date: result.expiry_date || '',
         custom_manufacturing_date: result.mfg_date || '',
         custom_gstin: result.gtin || '',
-		use_serial_batch_fields:1
+		use_serial_batch_fields:1,
+        allow_zero_valuation_rate: 1
     });
 
     frm.refresh_field('items');
@@ -790,10 +785,10 @@ function handle_create_new_row(frm, result, warehouse) {
     highlight_row(frm, new_idx);
     scroll_to_row(frm, new_idx);
 
-    frappe.show_alert({
-        message: `✓ New row created | Batch: ${result.batch_no} | SN: ${result.serial_no || 'N/A'}`,
-        indicator: 'orange'
-    });
+    // frappe.show_alert({
+    //     message: `✓ New row created | Batch: ${result.batch_no} | SN: ${result.serial_no || 'N/A'}`,
+    //     indicator: 'orange'
+    // });
 }
 
 // ─── Case 4 ───────────────────────────────────────────────────────────────────
@@ -820,6 +815,7 @@ function handle_move_to_existing(frm, result) {
                 frappe.model.set_value(cdt, cdn, 'current_qty', serial_count);
                 frappe.model.set_value(cdt, cdn, 'amount', serial_count * (target_row.rate || 0));
                 frappe.model.set_value(cdt, cdn, 'current_amount', serial_count * (target_row.rate || 0));
+                frappe.model.set_value(cdt, cdn, 'allow_zero_valuation_rate', 1);
             }
         }
 
