@@ -221,7 +221,7 @@ def generate_barcodes_for_item_group(item_group):
 #     }
 
 @frappe.whitelist()
-def reverse_uom_conversions_async(item_group):
+def reverse_uom_conversions(item_group):
     """
     Enqueue UOM conversion reversal to run in background
     Returns immediately with job info
@@ -229,7 +229,7 @@ def reverse_uom_conversions_async(item_group):
     frappe.enqueue(
         method='beveren_health.beveren_health.customize.item_group.reverse_uom_conversions_background',
         queue='long',  # Use 'long' queue for time-consuming tasks
-        timeout=1200,  # 1 hour timeout
+        timeout=1200,
         is_async=True,
         job_name=f'UOM Reversal: {item_group}',
         item_group=item_group
