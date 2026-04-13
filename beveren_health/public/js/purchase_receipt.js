@@ -239,6 +239,9 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx) {
         frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
         frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
     }
+    if (result.gtin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
+    }
     if (result.mfg_date) {
         frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
     }
@@ -291,7 +294,8 @@ function handle_create_new_row(frm, result) {
         serial_no: result.serial_no || '',
         expiry_date: result.expiry_date || '',
         custom_expiry_date: result.expiry_date || '',
-        custom_manufacturing_date: result.mfg_date || ''
+        custom_manufacturing_date: result.mfg_date || '',
+        custom_gstin: result.gtin || ''
     });
 
     frm.refresh_field('items');
@@ -339,6 +343,9 @@ function handle_move_to_existing(frm, result) {
             frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
             frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
         }
+        if (result.gtin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
+    }
         if (result.mfg_date && !target_row.custom_manufacturing_date) {
             frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
         }

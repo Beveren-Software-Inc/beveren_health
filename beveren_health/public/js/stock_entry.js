@@ -319,6 +319,9 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
         frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
         frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
     }
+     if (result.custom_gstin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.custom_gstin);
+    }
     if (result.mfg_date) {
         frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
     }
