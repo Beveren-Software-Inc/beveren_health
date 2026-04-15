@@ -165,9 +165,7 @@ doc_events = {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     },
     "Full and Final Statement" : {
-        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save",
-        "on_submit" : "beveren_health.beveren_health.customize.full_and_final_settlement.on_submit"
-    },
+        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"    },
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
     },

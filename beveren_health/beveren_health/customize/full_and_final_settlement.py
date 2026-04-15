@@ -97,6 +97,7 @@ def before_save(self, method):
     for row in self.payables:
         if row.component == "Indemnity Reward":
             row.amount = flt(indemnity, 3)
+            row.status = "Settled"
             found = True
             break
 
@@ -104,5 +105,6 @@ def before_save(self, method):
         self.append("payables", {
             "component": "Indemnity Reward",
             "amount": flt(indemnity, 3),
+            "status": "Settled"
         })
     
