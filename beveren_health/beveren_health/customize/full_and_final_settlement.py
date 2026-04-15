@@ -92,10 +92,17 @@ def before_save(self, method):
     if not indemnity:
         return
 
-    self.custom_indemnity_reward = flt(indemnity, 3)
+    found = False
 
-    self.append("payables", {
-        "component": "Indemnity Reward",
-        "amount": flt(indemnity, 3)
-    })
+    for row in self.payables:
+        if row.component == "Indemnity Reward":
+            row.amount = flt(indemnity, 3)
+            found = True
+            break
+
+    if not found:
+        self.append("payables", {
+            "component": "Indemnity Reward",
+            "amount": flt(indemnity, 3),
+        })
     
