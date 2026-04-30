@@ -138,33 +138,7 @@ frappe.ui.form.on("Batch", {
 				d.show();
 			}, __("Actions"));
 		}
-		// frm.add_custom_button(__('Generate Barcode Image for All Batches'), function() {
-		// 	frappe.call({
-		// 		method: 'beveren_health.beveren_health.utils.batch.generate_barcode_for_existing_batches',
-		// 		freeze: true,
-		// 		freeze_message: __('Generating barcodes for existing batches...'),
-		// 		callback: function(r) {
-		// 			const msg = (r && r.message) ? r.message : __('Barcode generation job completed.');
-		// 			frappe.msgprint(msg);
-		// 		}
-		// 	});
-		// }, __("Actions"));
-
-		// frm.add_custom_button(__('Generate Barcode for This Batch'), function() {
-		// 	frappe.call({
-		// 		method: 'beveren_health.beveren_health.utils.batch.generate_barcode_image_for_batch',
-		// 		args: { batch_name: frm.doc.name },
-		// 		freeze: true,
-		// 		freeze_message: __('Generating barcode for this batch...'),
-		// 		callback: function() {
-		// 			frm.reload_doc();
-		// 			frappe.show_alert({
-		// 				message: __('Barcode generated for this batch'),
-		// 				indicator: 'green'
-		// 			});
-		// 		}
-		// 	});
-		// }, __("Actions"));
+	
 	},
 	
 });

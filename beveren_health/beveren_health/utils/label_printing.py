@@ -67,51 +67,7 @@ def get_label_data_for_batch(batch_name):
 		"batch_no": batch_name,
 		"expiry_date": expiry_date,
 	}
-# def get_label_data_for_batch(batch_name):
-# 	"""
-# 	Get all data needed to print a label for a Batch.
-# 	Label order: Barcode Image, Barcode Number, Item Code, Item Name line, Standard Selling Price, Batch Number, Expiry Date.
-# 	"""
-# 	if not batch_name or not frappe.db.exists("Batch", batch_name):
-# 		return None
-
-# 	batch_doc = frappe.get_doc("Batch", batch_name)
-# 	item_code = batch_doc.item
-# 	item_doc = frappe.get_doc("Item", item_code)
-
-# 	barcode_image = None
-# 	barcode_value = None
-# 	if item_doc.barcodes:
-# 		for row in item_doc.barcodes:
-# 			if getattr(row, "custom_image", None):
-# 				barcode_image = row.custom_image
-# 				barcode_value = getattr(row, "barcode", None) or ""
-# 				break
-
-# 	# Item Standard Selling Price (standard_rate)
-# 	standard_rate = flt(item_doc.get("standard_rate") or 0)
-# 	company = frappe.get_all("Company", fields=["name", "default_currency"], limit=1)
-# 	currency = company[0].get("default_currency") if company else "USD"
-# 	standard_selling_price = frappe.format_value(
-# 		standard_rate, {"fieldtype": "Currency", "options": currency}
-# 	)
-
-# 	expiry_date = batch_doc.expiry_date
-# 	if expiry_date:
-# 		expiry_date = formatdate(expiry_date)
-# 	else:
-# 		expiry_date = "N/A"
-
-# 	return {
-# 		"item_code": item_code,
-# 		"item_name_line": _item_name_line(item_doc, batch_doc.get("uom")),
-# 		"barcode_image": barcode_image,
-# 		"barcode_value": barcode_value or "",
-# 		"standard_selling_price": standard_selling_price,
-# 		"batch_no": batch_name,
-# 		"expiry_date": expiry_date,
-# 	}
-
+ 
 
 @frappe.whitelist()
 def get_batch_and_expiry_from_bundle(serial_and_batch_bundle):
