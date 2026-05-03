@@ -284,27 +284,6 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
     });
 }
 
-// ─── Case 2 ───────────────────────────────────────────────────────────────────
-
-// function handle_append_serial(frm, cdt, cdn, result, row_idx) {
-//     frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
-//     frappe.model.set_value(cdt, cdn, 'current_qty', result.new_qty);
-//     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
-//     frappe.model.set_value(cdt, cdn, 'current_amount', result.new_amount);
-//     frappe.model.set_value(cdt, cdn, 'serial_no', result.all_serials);
-
-//     frm.refresh_field('items');
-//     frm.current_focused_row = row_idx;
-//     highlight_row(frm, row_idx);
-//     scroll_to_row(frm, row_idx);
-
-//     frappe.show_alert({
-//         message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
-//         indicator: 'green'
-//     });
-// }
-
-// ─── Case 2 ───────────────────────────────────────────────────────────────────
 
 function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
@@ -324,10 +303,7 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     highlight_row(frm, row_idx);
     scroll_to_row(frm, row_idx);
 
-    // frappe.show_alert({
-    //     message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
-    //     indicator: 'green'
-    // });
+   
 }
 // ─── Case 3 ───────────────────────────────────────────────────────────────────
 

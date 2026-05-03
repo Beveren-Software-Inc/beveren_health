@@ -44,12 +44,28 @@ def get_label_data_for_batch(batch_name):
 				barcode_value = getattr(row, "barcode", None) or ""
 				break
 
-	# Item Standard Selling Price (standard_rate)
+	# Item Standard Selling Price (standard_rate) inclusive of VAT
 	standard_rate = flt(item_doc.get("standard_rate") or 0)
 	company = frappe.get_all("Company", fields=["name", "default_currency"], limit=1)
 	currency = company[0].get("default_currency") if company else "USD"
+
+	# Fetch the tax rate from the item's Item Tax Template and apply it
+	tax_rate = 0.0
+	if item_doc.taxes:
+		item_tax_template = item_doc.taxes[0].get("item_tax_template")
+		if item_tax_template:
+			tax_details = frappe.get_all(
+				"Item Tax Template Detail",
+				filters={"parent": item_tax_template},
+				fields=["tax_rate"],
+				limit=1,
+			)
+			if tax_details:
+				tax_rate = flt(tax_details[0].tax_rate)
+
+	vat_inclusive_rate = standard_rate * (1 + tax_rate / 100)
 	standard_selling_price = frappe.format_value(
-		standard_rate, {"fieldtype": "Currency", "options": currency}
+		vat_inclusive_rate, {"fieldtype": "Currency", "options": currency}
 	)
 
 	expiry_date = batch_doc.expiry_date
