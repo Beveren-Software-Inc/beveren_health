@@ -1,8 +1,36 @@
 # Copyright (c) 2026, Beveren Software and contributors
 # For license information, please see license.txt
 
+import base64
+import mimetypes
+import os
+
 import frappe
 from frappe.utils import flt, formatdate
+
+
+def _file_url_to_base64(file_url):
+	"""Convert a Frappe file URL to a base64 data URI so it renders
+	regardless of private/public permissions or session context."""
+	if not file_url:
+		return None
+
+	site_path = frappe.get_site_path()
+
+	if file_url.startswith("/private/files/") or file_url.startswith("/files/"):
+		abs_path = os.path.join(site_path, file_url.lstrip("/"))
+	elif file_url.startswith("/"):
+		abs_path = os.path.join(site_path, "public", file_url.lstrip("/"))
+	else:
+		return file_url
+
+	if not os.path.isfile(abs_path):
+		return file_url
+
+	mime_type = mimetypes.guess_type(abs_path)[0] or "image/png"
+	with open(abs_path, "rb") as f:
+		encoded = base64.b64encode(f.read()).decode()
+	return f"data:{mime_type};base64,{encoded}"
 
 
 def _item_name_line(item_doc, batch_uom=None):
@@ -77,7 +105,7 @@ def get_label_data_for_batch(batch_name):
 	return {
 		"item_code": item_code,
 		"item_name_line": _item_name_line(item_doc, batch_doc.get("uom")),
-		"barcode_image": barcode_image,
+		"barcode_image": _file_url_to_base64(barcode_image),
 		"barcode_value": barcode_value or "",
 		"standard_selling_price": standard_selling_price,
 		"batch_no": batch_name,
