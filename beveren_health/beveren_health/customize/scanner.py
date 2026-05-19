@@ -3,6 +3,11 @@ from frappe import _
 import re
 from datetime import datetime
 
+from beveren_health.beveren_health.customize.dispensing_lot import (
+	DISPENSING_LOT_FIELD,
+	split_dispensing_lots,
+)
+
 # Document type configurations
 DOCTYPE_CONFIG = {
     "Purchase Receipt": {
@@ -38,7 +43,15 @@ DOCTYPE_CONFIG = {
     }
 }
 @frappe.whitelist()
-def process_batch_scan(barcode_data, document_name, doctype, current_item_code=None, current_batch_no=None, warehouse=None):
+def process_batch_scan(
+	barcode_data,
+	document_name,
+	doctype,
+	current_item_code=None,
+	current_batch_no=None,
+	warehouse=None,
+	current_row_name=None,
+):
     """
     Unified barcode scanner handler for Purchase Receipt, Stock Reconciliation, and Stock Entry.
     
@@ -84,13 +97,15 @@ def process_batch_scan(barcode_data, document_name, doctype, current_item_code=N
         existing_row_info = find_existing_batch_row(doc, config, item_code, parsed['batch_no'])
         
         if existing_row_info:
-            current_idx = get_current_row_index(doc, config, current_item_code, current_batch_no)
+            current_idx = get_current_row_index(
+				doc, config, current_item_code, current_batch_no, current_row_name
+			)
             
             # Check if the existing batch is on the current row
             if existing_row_info['index'] == current_idx:
                 # Case 2: Same batch as current row → append serial only
                 frappe.logger().info(f"Case 2: Same batch on current row - appending serial")
-                return append_serial_to_row(doc, config, existing_row_info['row'], parsed, item)
+                return append_dispensing_lot_to_row(doc, config, existing_row_info['row'], parsed, item)
             else:
                 # Case 4: Batch lives on a different row → move focus there
                 frappe.logger().info(f"Case 4: Batch exists on different row (index {existing_row_info['index']}) - moving focus")
@@ -135,6 +150,7 @@ def assign_to_current_row(config, item, parsed, warehouse=None):
         "action": "assign_to_current",
         "item_code": item.name,
         "item_name": item.item_name,
+        "uom": item.stock_uom,
         "batch_no": parsed['batch_no'],
         "serial_no": parsed.get('serial_no'),
         "expiry_date": parsed.get('expiry_date'),
@@ -142,75 +158,71 @@ def assign_to_current_row(config, item, parsed, warehouse=None):
         "qty": 1,
         "rate": frappe.db.get_value("Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate") or 0,
         "warehouse": warehouse,
-        "gtin": parsed.get('gtin')
+        "gtin": parsed.get('gtin'),
     }
 
 
-def append_serial_to_row(doc, config, row, parsed, item):
-    """Case 2 – same batch scanned again: append serial, recalculate qty from serial count."""
-    serial_no = row.serial_no or ''
-    
-    new_serial = parsed.get('serial_no')
-    if new_serial and new_serial not in serial_no:
-        serial_no = (serial_no + '\n' + new_serial).strip()
-    
-    # Qty = number of serials tracked (one unit per serial)
-    serial_count = len([s for s in serial_no.split('\n') if s.strip()]) if serial_no else 1
-    new_qty = serial_count if serial_no else (row.qty or 0) + 1
-    
-    # Get rate from appropriate field
+def append_dispensing_lot_to_row(doc, config, row, parsed, item):
+    """Case 2 – same batch scanned again: append to custom_dispensing_lot, recalculate qty."""
+    dispensing_lots = row.get(DISPENSING_LOT_FIELD) or ""
+
+    new_serial = parsed.get("serial_no")
+    existing = split_dispensing_lots(dispensing_lots)
+    if new_serial and new_serial not in existing:
+        existing.append(new_serial)
+        dispensing_lots = "\n".join(existing)
+
+    lot_count = len(split_dispensing_lots(dispensing_lots)) if dispensing_lots else 1
+    new_qty = lot_count if dispensing_lots else (row.qty or 0) + 1
+
     rate = 0
-    if hasattr(row, 'rate'):
+    if hasattr(row, "rate"):
         rate = row.rate or 0
-    elif hasattr(row, 'basic_rate'):
+    elif hasattr(row, "basic_rate"):
         rate = row.basic_rate or 0
-    elif config.get('rate_field'):
-        rate = getattr(row, config['rate_field'], 0) or 0
-    
+    elif config.get("rate_field"):
+        rate = getattr(row, config["rate_field"], 0) or 0
+
     new_amount = new_qty * rate
-    
-    # Prepare update values
+
     update_values = {
-        config['qty_field']: new_qty,
-        config['amount_field']: new_amount,
-        'serial_no': serial_no
+        config["qty_field"]: new_qty,
+        config["amount_field"]: new_amount,
+        DISPENSING_LOT_FIELD: dispensing_lots,
     }
-    
-    # Also update custom_gstin if present in parsed and not already set on row
-    if parsed.get('gtin') and not row.get('custom_gstin'):
-        update_values['custom_gstin'] = parsed.get('gtin')
-    
-    # Update rate field if it exists
-    if hasattr(row, 'rate'):
-        update_values['rate'] = rate
-    elif hasattr(row, 'basic_rate'):
-        update_values['basic_rate'] = rate
-    
-    # Add doctype-specific fields
-    for field, source_field in config['additional_fields'].items():
-        if source_field == 'qty':
+
+    if parsed.get("gtin") and not row.get("custom_gstin"):
+        update_values["custom_gstin"] = parsed.get("gtin")
+
+    if hasattr(row, "rate"):
+        update_values["rate"] = rate
+    elif hasattr(row, "basic_rate"):
+        update_values["basic_rate"] = rate
+
+    for field, source_field in config["additional_fields"].items():
+        if source_field == "qty":
             update_values[field] = new_qty
-        elif source_field == 'amount':
+        elif source_field == "amount":
             update_values[field] = new_amount
-        elif source_field == 'rate':
+        elif source_field == "rate":
             update_values[field] = rate
-    
-    frappe.db.set_value(config['child_doctype'], row.name, update_values)
+
+    frappe.db.set_value(config["child_doctype"], row.name, update_values)
     doc.reload()
-    
-  
-    
+
     return {
         "success": True,
         "action": "append_serial",
         "row_name": row.name,
         "new_qty": new_qty,
         "new_amount": new_amount,
-        "serial_no": parsed.get('serial_no'),
-        "all_serials": serial_no,
+        "serial_no": parsed.get("serial_no"),
+        "dispensing_lot": parsed.get("serial_no"),
+        "all_dispensing_lots": dispensing_lots,
+        "all_serials": dispensing_lots,
         "item_name": item.item_name,
-        "batch_no": parsed['batch_no'],
-        "gtin": parsed.get('gtin')
+        "batch_no": parsed["batch_no"],
+        "gtin": parsed.get("gtin"),
     }
     
 # def append_serial_to_row(doc, config, row, parsed, item):
@@ -597,6 +609,9 @@ def find_item_by_batch_or_serial(batch_no, serial_no=None):
         if item:
             return item
     if serial_no:
+        item = frappe.db.get_value("Dispensing Lot", {"serial_no": serial_no}, "item")
+        if item:
+            return item
         item = frappe.db.get_value("Serial No", {"serial_no": serial_no}, "item_code")
         if item:
             return item
@@ -616,16 +631,23 @@ def find_existing_batch_row(doc, config, item_code, batch_no):
     frappe.logger().info("No matching row found")
     return None
 
-def get_current_row_index(doc, config, current_item_code, current_batch_no):
-    """Get index of current row based on item code and batch number."""
-    if not current_item_code:
+def get_current_row_index(doc, config, current_item_code, current_batch_no, current_row_name=None):
+    """Get index of the row being scanned (prefer row name, then item+batch)."""
+    items = doc.get(config["item_field"]) or []
+
+    if current_row_name:
+        for idx, row in enumerate(items):
+            if row.name == current_row_name:
+                return idx
+
+    if not current_item_code and not current_batch_no:
         return -1
-    
-    items = doc.get(config['item_field'])
+
     for idx, row in enumerate(items):
-        if row.item_code == current_item_code and row.batch_no == current_batch_no:
+        row_batch = row.batch_no or ""
+        if row.item_code == current_item_code and row_batch == (current_batch_no or ""):
             return idx
-    
+
     return -1
 
 def get_or_create_batch(item_code, batch_no, expiry_date=None):

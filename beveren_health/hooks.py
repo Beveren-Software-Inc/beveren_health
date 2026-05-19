@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/beveren_health/css/beveren_health.css"
-# app_include_js = "/assets/beveren_health/js/beveren_health.js"
+app_include_js = "/assets/beveren_health/js/dispensing_lot_scan_helpers.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/beveren_health/css/beveren_health.css"
@@ -66,7 +66,8 @@ doctype_js = {
     "Employee Checkin" : "public/js/employee_checkin.js",
     "Cost Center" : "public/js/cost_center.js",
     "Stock Reconciliation": "public/js/stock_reconciliation.js",
-    "Stock Entry": "beveren_health/public/js/stock_entry.js",
+    "Stock Entry": "public/js/stock_entry.js",
+    "Sales Invoice": "public/js/sales_invoice.js",
 }
 
 # Svg Icons
@@ -165,8 +166,13 @@ doc_events = {
     "Employee" : {
         "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
     },
-    "Sales Invoice" : {
-        "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
+    "Sales Invoice": {
+        "validate": [
+            "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
+            "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+        ],
+        "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
+        "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
     "Full and Final Statement" : {
         "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save",
@@ -191,14 +197,29 @@ doc_events = {
         "before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"
     },
     "Purchase Receipt": {
-        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+        ],
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
     },
     "Stock Reconciliation": {
-        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+        ],
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
     },
     "Stock Entry": {
-        "on_submit": "beveren_health.beveren_health.customize.serial_no.update_serial_gtin"
-    }
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+        ],
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+    },
     
 }
 
@@ -363,7 +384,15 @@ fixtures = [
                 "Stock Entry Detail-custom_gstin",
                 "Purchase Receipt Item-custom_gstin",
                 "Serial No-custom_gtin",
-            
+                "Sales Invoice Item-custom_dispensing_lot",
+                "Item-custom_has_dispense_lot",
+                "Sales Invoice Item-custom_section_break_k4p2l",
+                "Purchase Receipt Item-custom_dispensing_lot",
+                "Purchase Receipt Item-custom_section_break_qpm82",
+                "Stock Entry Detail-custom_dispensing_lot",
+                "Stock Entry Detail-custom_section_break_81xt5",
+                "Stock Reconciliation Item-custom_dispensing_lot",
+                "Stock Reconciliation Item-custom_section_break_vv0xo",
             ]]
         ]
     }
