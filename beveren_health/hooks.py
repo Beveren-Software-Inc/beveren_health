@@ -57,7 +57,7 @@ doctype_js = {
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
     "Batch" : "public/js/batch.js",
-    "Item Group" : "beveren_health/public/js/item_group.js",
+    "Item Group": "public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
     "Salary Slip" : "public/js/salary_slip.js",
     "Holiday List" : "public/js/holiday_list.js",

@@ -2,6 +2,12 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
+from frappe.utils import flt
+
+from beveren_health.beveren_health.customize.dispensing_lot import (
+	get_pack_size_and_uom,
+)
 from beveren_health.beveren_health.utils.barcode import (
 	generate_barcode_image,
 	generate_ean13_barcode,
@@ -219,6 +225,307 @@ def generate_barcodes_for_item_group(item_group):
 #         "updated_items": updated_items,
 #         "errors": errors
 #     }
+
+def _run_clear_has_serial_no_for_item_group(item_group):
+	"""Set has_serial_no = 0 on all items in this item group (db.set_value per item)."""
+	items = frappe.get_all("Item", filters={"item_group": item_group}, pluck="name")
+
+	if not items:
+		return {
+			"message": f"No items found in group {item_group}",
+			"updated_count": 0,
+			"errors": [],
+		}
+
+	updated_items = []
+	errors = []
+
+	for item_name in items:
+		try:
+			frappe.db.set_value("Item", item_name, "has_serial_no", 0, update_modified=False)
+			updated_items.append(item_name)
+		except Exception as e:
+			errors.append(f"{item_name}: {str(e)}")
+			frappe.log_error(
+				title="Clear has_serial_no Error",
+				message=f"Item {item_name} in group {item_group}: {e}",
+			)
+
+	frappe.db.commit()
+
+	message = _("Cleared Has Serial No on {0} item(s) in group {1}.").format(
+		len(updated_items), item_group
+	)
+	if errors:
+		message += " " + _("{0} error(s).").format(len(errors))
+
+	return {
+		"message": message,
+		"updated_count": len(updated_items),
+		"updated_items": updated_items,
+		"errors": errors,
+	}
+
+
+def _run_clear_has_serial_no_job(item_group):
+	try:
+		result = _run_clear_has_serial_no_for_item_group(item_group)
+		_notify_clear_has_serial_no_done(item_group, result)
+	except Exception as e:
+		frappe.log_error(
+			title="Clear has_serial_no Job Error",
+			message=f"Item group {item_group}: {e}",
+		)
+		_notify_clear_has_serial_no_done(item_group, e)
+
+
+def _notify_clear_has_serial_no_done(item_group, result):
+	if result is None or isinstance(result, Exception):
+		frappe.publish_realtime(
+			"item_group_clear_serial_no_done",
+			{
+				"item_group": item_group,
+				"error": True,
+				"message": str(result) if result else _("Job failed."),
+			},
+		)
+		return
+
+	frappe.publish_realtime(
+		"item_group_clear_serial_no_done",
+		{
+			"item_group": item_group,
+			"message": result.get("message"),
+			"result": result,
+		},
+	)
+
+
+@frappe.whitelist()
+def clear_has_serial_no_for_item_group(item_group):
+	"""Queue background job to clear has_serial_no on all items in this item group."""
+	if not item_group:
+		frappe.throw(_("Item Group is required"))
+
+	frappe.enqueue(
+		method="beveren_health.beveren_health.customize.item_group._run_clear_has_serial_no_job",
+		queue="long",
+		timeout=3600,
+		item_group=item_group,
+		enqueue_after_commit=True,
+		job_name=f"Clear has_serial_no: {item_group}",
+	)
+	return {
+		"queued": True,
+		"message": _(
+			"Clearing Has Serial No for all items in {0} has started in the background. "
+			"You will be notified when it completes."
+		).format(item_group),
+	}
+
+
+def _dispensing_lot_exists_for_serial(serial_no):
+	if not serial_no:
+		return True
+	if frappe.db.exists("Dispensing Lot", serial_no):
+		return True
+	return bool(frappe.db.get_value("Dispensing Lot", {"serial_no": serial_no}, "name"))
+
+
+def _migrate_one_serial_to_dispensing_lot(serial_row, item_group):
+	"""
+	Create one Dispensing Lot from an ERPNext Serial No row (migration only — does not alter Serial No).
+	"""
+	serial_no = (serial_row.get("serial_no") or serial_row.get("name") or "").strip()
+	if not serial_no:
+		return "skipped", _("Missing serial number")
+
+	if _dispensing_lot_exists_for_serial(serial_no):
+		return "skipped_exists", serial_no
+
+	item_code = serial_row.get("item_code")
+	if not item_code:
+		return "error", _("Serial {0}: no item").format(serial_no)
+
+	batch_no = serial_row.get("batch_no")
+	if not batch_no:
+		return "error", _("Serial {0}: batch is required for Dispensing Lot").format(serial_no)
+
+	pack_size, dispensing_uom = get_pack_size_and_uom(item_code)
+	if not pack_size or pack_size <= 0:
+		pack_size = 1
+
+	gtin = serial_row.get("custom_gtin") or frappe.db.get_value(
+		"Item", item_code, "custom_gtin_number"
+	)
+
+	warehouse = serial_row.get("warehouse")
+	serial_status = (serial_row.get("status") or "Active").strip()
+
+	if serial_status == "Delivered":
+		remaining_qty = 0
+		lot_status = "Delivered"
+	elif serial_status in ("Inactive", "Expired"):
+		remaining_qty = 0
+		lot_status = "Inactive"
+	else:
+		remaining_qty = pack_size
+		lot_status = "Active"
+
+	lot = frappe.get_doc(
+		{
+			"doctype": "Dispensing Lot",
+			"naming_series": "DL-.YYYY.-",
+			"item": item_code,
+			"batch_no": batch_no,
+			"warehouse": warehouse,
+			"serial_no": serial_no,
+			"gtin": gtin,
+			"uom": dispensing_uom,
+			"initial_qty": pack_size,
+			"remaining_qty": remaining_qty,
+			"status": lot_status,
+			"source_doctype": "Item Group",
+			"source_document": item_group,
+		}
+	)
+	lot.insert(ignore_permissions=True)
+
+	# validate() recalculates remaining from transactions; fix Delivered/Inactive after insert
+	if lot_status != "Active" or flt(remaining_qty) != flt(pack_size):
+		frappe.db.set_value(
+			"Dispensing Lot",
+			lot.name,
+			{"remaining_qty": remaining_qty, "status": lot_status},
+			update_modified=False,
+		)
+
+	return "created", lot.name
+
+
+def _run_migrate_serials_to_dispensing_lots(item_group):
+	"""Create Dispensing Lot records from all Serial Nos for items in this item group."""
+	item_codes = frappe.get_all(
+		"Item", filters={"item_group": item_group}, pluck="name"
+	)
+
+	if not item_codes:
+		return {
+			"message": _("No items in group {0}").format(item_group),
+			"created_count": 0,
+			"skipped_count": 0,
+			"errors": [],
+		}
+
+	serial_fields = ["name", "serial_no", "item_code", "batch_no", "warehouse", "status"]
+	if frappe.db.has_column("Serial No", "custom_gtin"):
+		serial_fields.append("custom_gtin")
+
+	serials = frappe.get_all(
+		"Serial No",
+		filters={"item_code": ["in", item_codes]},
+		fields=serial_fields,
+		order_by="item_code asc, creation asc",
+	)
+
+	created = []
+	skipped = []
+	errors = []
+	commit_every = 100
+
+	for idx, serial_row in enumerate(serials, start=1):
+		try:
+			result_type, detail = _migrate_one_serial_to_dispensing_lot(serial_row, item_group)
+			if result_type == "created":
+				created.append(detail)
+			elif result_type == "skipped_exists":
+				skipped.append(detail)
+			elif result_type == "skipped":
+				skipped.append(detail)
+			else:
+				errors.append(detail if isinstance(detail, str) else str(detail))
+		except Exception as e:
+			label = serial_row.get("serial_no") or serial_row.get("name")
+			errors.append(f"{label}: {e}")
+			frappe.log_error(
+				title="Serial to Dispensing Lot migration",
+				message=f"Item group {item_group}, serial {label}: {frappe.get_traceback()}",
+			)
+
+		if idx % commit_every == 0:
+			frappe.db.commit()
+
+	frappe.db.commit()
+
+	message = _(
+		"Migrated Serial Nos to Dispensing Lot for {0}: {1} created, {2} skipped, {3} error(s)."
+	).format(item_group, len(created), len(skipped), len(errors))
+
+	return {
+		"message": message,
+		"created_count": len(created),
+		"skipped_count": len(skipped),
+		"error_count": len(errors),
+		"errors": errors[:50],
+	}
+
+
+def _run_migrate_serials_to_dispensing_lots_job(item_group):
+	try:
+		result = _run_migrate_serials_to_dispensing_lots(item_group)
+		_notify_migrate_serials_done(item_group, result)
+	except Exception as e:
+		frappe.log_error(
+			title="Migrate Serials to Dispensing Lot",
+			message=f"Item group {item_group}: {frappe.get_traceback()}",
+		)
+		_notify_migrate_serials_done(item_group, e)
+
+
+def _notify_migrate_serials_done(item_group, result):
+	if result is None or isinstance(result, Exception):
+		frappe.publish_realtime(
+			"item_group_migrate_serials_done",
+			{
+				"item_group": item_group,
+				"error": True,
+				"message": str(result) if result else _("Job failed."),
+			},
+		)
+		return
+
+	frappe.publish_realtime(
+		"item_group_migrate_serials_done",
+		{
+			"item_group": item_group,
+			"message": result.get("message"),
+			"result": result,
+		},
+	)
+
+
+@frappe.whitelist()
+def migrate_serials_to_dispensing_lots(item_group):
+	"""Background job: create Dispensing Lots from Serial Nos for all items in the item group."""
+	if not item_group:
+		frappe.throw(_("Item Group is required"))
+
+	frappe.enqueue(
+		method="beveren_health.beveren_health.customize.item_group._run_migrate_serials_to_dispensing_lots_job",
+		queue="long",
+		timeout=2700,
+		item_group=item_group,
+		enqueue_after_commit=True,
+		job_name=f"Migrate serials to DL: {item_group}",
+	)
+	return {
+		"queued": True,
+		"message": _(
+			"Migration started for {0}. Serial Nos will be copied to Dispensing Lot in the background "
+			"(up to 45 minutes). You will be notified when complete."
+		).format(item_group),
+	}
+
 
 @frappe.whitelist()
 def reverse_uom_conversions(item_group):
