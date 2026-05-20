@@ -250,17 +250,23 @@ function refocus_scanner_field(frm, result) {
 // ─── Case 1 ───────────────────────────────────────────────────────────────────
 
 function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
-
+    frappe.model.set_value(cdt, cdn, 'item_code', result.item_code);
+    frappe.model.set_value(cdt, cdn, 'item_name', result.item_name);
+    frappe.model.set_value(cdt, cdn, 'use_serial_batch_fields', 1);
+    if (result.uom) {
+        frappe.model.set_value(cdt, cdn, 'uom', result.uom);
+    }
     frappe.model.set_value(cdt, cdn, 'batch_no', result.batch_no);
     frappe.model.set_value(cdt, cdn, 'warehouse', warehouse);
-    frappe.model.set_value(cdt, cdn, 'qty', 1);
-    frappe.model.set_value(cdt, cdn, 'current_qty', 1);
-    frappe.model.set_value(cdt, cdn, 'amount', result.amount || 0);
-    frappe.model.set_value(cdt, cdn, 'current_amount', result.amount || 0);
     frappe.model.set_value(cdt, cdn, 'allow_zero_valuation_rate', 1);
 
     if (result.serial_no) {
-        frappe.model.set_value(cdt, cdn, 'serial_no', result.serial_no);
+        beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, result.serial_no, frm);
+    } else {
+        frappe.model.set_value(cdt, cdn, 'qty', 1);
+        frappe.model.set_value(cdt, cdn, 'current_qty', 1);
+        frappe.model.set_value(cdt, cdn, 'amount', result.amount || 0);
+        frappe.model.set_value(cdt, cdn, 'current_amount', result.amount || 0);
     }
     if (result.expiry_date) {
         frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
@@ -290,7 +296,11 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     frappe.model.set_value(cdt, cdn, 'current_qty', result.new_qty);
     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
     frappe.model.set_value(cdt, cdn, 'current_amount', result.new_amount);
-    frappe.model.set_value(cdt, cdn, 'serial_no', result.all_serials);
+    beveren_health.dispensing_lot_scan.set_lots(
+        cdt,
+        cdn,
+        result.all_dispensing_lots || result.all_serials
+    );
     frappe.model.set_value(cdt, cdn, 'allow_zero_valuation_rate', 1);
     
     // ADD THIS - Set custom_gstin if present in result
@@ -320,7 +330,7 @@ function handle_create_new_row(frm, result, warehouse) {
         amount: result.amount || 0,
         current_amount: result.amount || 0,
         batch_no: result.batch_no,
-        serial_no: result.serial_no || '',
+        custom_dispensing_lot: result.serial_no || '',
         expiry_date: result.expiry_date || '',
         custom_expiry_date: result.expiry_date || '',
         custom_manufacturing_date: result.mfg_date || '',
@@ -354,14 +364,14 @@ function handle_move_to_existing(frm, result) {
         let cdn = target_row.name;
 
         if (result.serial_no) {
-            let existing_serials = target_row.serial_no || '';
-            if (!existing_serials.includes(result.serial_no)) {
-                let updated_serials = existing_serials
-                    ? existing_serials + '\n' + result.serial_no
-                    : result.serial_no;
-                frappe.model.set_value(cdt, cdn, 'serial_no', updated_serials);
+            let updated_lots = beveren_health.dispensing_lot_scan.append_lot(
+                target_row.custom_dispensing_lot,
+                result.serial_no
+            );
+            if (updated_lots !== (target_row.custom_dispensing_lot || "")) {
+                beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, updated_lots);
 
-                let serial_count = updated_serials.split('\n').filter(s => s.trim()).length;
+                let serial_count = beveren_health.dispensing_lot_scan.count_lots(updated_lots);
                 frappe.model.set_value(cdt, cdn, 'qty', serial_count);
                 frappe.model.set_value(cdt, cdn, 'current_qty', serial_count);
                 frappe.model.set_value(cdt, cdn, 'amount', serial_count * (target_row.rate || 0));
