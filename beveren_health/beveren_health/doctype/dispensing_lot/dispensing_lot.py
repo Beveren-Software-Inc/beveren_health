@@ -31,7 +31,7 @@ class DispensingLot(Document):
 			)
 
 	def set_remaining_qty(self):
-		if self._has_full_pack_sale():
+		if self._net_full_pack_sales() >= 1:
 			self.remaining_qty = 0
 			return
 
@@ -40,6 +40,8 @@ class DispensingLot(Document):
 
 		for row in self.transactions:
 			if row.transaction_type == "Transfer":
+				continue
+			if row.uom == self.stock_uom and flt(row.qty) >= 1:
 				continue
 			qty = flt(row.qty)
 			if row.transaction_type == "In":
@@ -75,19 +77,35 @@ class DispensingLot(Document):
 			self.status = "Partially Sold"
 		else:
 			self.status = "Active"
+			self._restore_serial_no_if_active()
+
+	def _net_full_pack_sales(self):
+		"""Net full packs sold in stock UOM (Out minus In reversals, e.g. cancelled invoice)."""
+		if not self.stock_uom:
+			return 0
+
+		out = 0
+		inp = 0
+		for row in self.transactions:
+			if row.uom != self.stock_uom:
+				continue
+			qty = flt(row.qty)
+			if row.transaction_type == "Out":
+				out += qty
+			elif row.transaction_type == "In":
+				inp += qty
+
+		return out - inp
 
 	def _has_full_pack_sale(self):
 		"""Selling in stock UOM (e.g. Pack) means the whole lot is delivered."""
-		if not self.stock_uom:
-			return False
+		return self._net_full_pack_sales() >= 1
 
-		for row in self.transactions:
-			if row.transaction_type != "Out":
-				continue
-			if row.uom == self.stock_uom and flt(row.qty) >= 1:
-				return True
-
-		return False
+	def _restore_serial_no_if_active(self):
+		if self.serial_no:
+			return
+		if self.name and not (self.name or "").startswith("DL-"):
+			self.serial_no = self.name
 
 	def _has_net_issue(self):
 		issued = 0

@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt
+from frappe.utils import cint, flt
 
 from beveren_health.beveren_health.customize.dispensing_lot import (
 	get_pack_size_and_uom,
@@ -523,6 +523,135 @@ def migrate_serials_to_dispensing_lots(item_group):
 		"message": _(
 			"Migration started for {0}. Serial Nos will be copied to Dispensing Lot in the background "
 			"(up to 45 minutes). You will be notified when complete."
+		).format(item_group),
+	}
+
+
+def _run_flag_dispense_lot_items_for_item_group(item_group):
+	"""
+	For items in this group that have Dispensing Lot records, set Item.custom_has_dispense_lot = 1.
+	"""
+	if not frappe.db.has_column("Item", "custom_has_dispense_lot"):
+		return {
+			"message": _("Custom field custom_has_dispense_lot is not on Item."),
+			"updated_count": 0,
+			"errors": [],
+		}
+
+	items_in_group = frappe.get_all(
+		"Item", filters={"item_group": item_group}, pluck="name"
+	)
+	if not items_in_group:
+		return {
+			"message": _("No items in group {0}").format(item_group),
+			"updated_count": 0,
+			"errors": [],
+		}
+
+	item_codes = frappe.db.sql(
+		"""
+		SELECT DISTINCT item
+		FROM `tabDispensing Lot`
+		WHERE item IN %(items)s AND item IS NOT NULL AND item != ''
+		""",
+		{"items": items_in_group},
+		pluck=True,
+	)
+
+	if not item_codes:
+		return {
+			"message": _("No Dispensing Lots found for items in group {0}").format(item_group),
+			"updated_count": 0,
+			"errors": [],
+		}
+
+	updated = []
+	skipped = []
+	errors = []
+
+	for item_code in item_codes:
+		try:
+			if cint(frappe.db.get_value("Item", item_code, "custom_has_dispense_lot") or 0):
+				skipped.append(item_code)
+				continue
+			frappe.db.set_value(
+				"Item", item_code, "custom_has_dispense_lot", 1, update_modified=True
+			)
+			updated.append(item_code)
+		except Exception as e:
+			errors.append(f"{item_code}: {e}")
+			frappe.log_error(
+				title="Flag Has Dispense Lot",
+				message=f"Item {item_code} in group {item_group}: {e}",
+			)
+
+	frappe.db.commit()
+
+	message = _(
+		"Has Dispense Lot enabled on {0} item(s) in group {1} ({2} already set, {3} error(s))."
+	).format(len(updated), item_group, len(skipped), len(errors))
+
+	return {
+		"message": message,
+		"updated_count": len(updated),
+		"skipped_count": len(skipped),
+		"updated_items": updated,
+		"errors": errors,
+	}
+
+
+def _run_flag_dispense_lot_items_job(item_group):
+	try:
+		result = _run_flag_dispense_lot_items_for_item_group(item_group)
+		_notify_flag_dispense_lot_items_done(item_group, result)
+	except Exception as e:
+		frappe.log_error(
+			title="Flag Has Dispense Lot Job",
+			message=f"Item group {item_group}: {frappe.get_traceback()}",
+		)
+		_notify_flag_dispense_lot_items_done(item_group, e)
+
+
+def _notify_flag_dispense_lot_items_done(item_group, result):
+	if result is None or isinstance(result, Exception):
+		frappe.publish_realtime(
+			"item_group_flag_dispense_lot_done",
+			{
+				"item_group": item_group,
+				"error": True,
+				"message": str(result) if result else _("Job failed."),
+			},
+		)
+		return
+
+	frappe.publish_realtime(
+		"item_group_flag_dispense_lot_done",
+		{
+			"item_group": item_group,
+			"message": result.get("message"),
+			"result": result,
+		},
+	)
+
+
+@frappe.whitelist()
+def flag_has_dispense_lot_from_dispensing_lots(item_group):
+	"""Enable custom_has_dispense_lot on items in this group that have Dispensing Lots."""
+	if not item_group:
+		frappe.throw(_("Item Group is required"))
+
+	frappe.enqueue(
+		method="beveren_health.beveren_health.customize.item_group._run_flag_dispense_lot_items_job",
+		queue="long",
+		timeout=3600,
+		item_group=item_group,
+		enqueue_after_commit=True,
+		job_name=f"Flag Has Dispense Lot: {item_group}",
+	)
+	return {
+		"queued": True,
+		"message": _(
+			"Enabling Has Dispense Lot for items with Dispensing Lots in {0} has started in the background."
 		).format(item_group),
 	}
 
