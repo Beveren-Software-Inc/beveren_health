@@ -87,6 +87,34 @@ frappe.ui.form.on("Item Group", {
 					function () {}
 				);
 			}, __("Actions"));
+
+			frm.add_custom_button(__("Enable Has Dispense Lot from Lots"), function () {
+				frappe.confirm(
+					__(
+						"This will tick <b>Has Dispense Lot</b> on every item in this group that already "
+						+ "has at least one <b>Dispensing Lot</b> record. Runs in the background. Continue?"
+					),
+					function () {
+						frappe.call({
+							method:
+								"beveren_health.beveren_health.customize.item_group.flag_has_dispense_lot_from_dispensing_lots",
+							args: { item_group: frm.doc.name },
+							callback: function (r) {
+								if (r.message && r.message.queued) {
+									frappe.show_alert({
+										message: r.message.message,
+										indicator: "blue",
+									});
+								}
+							},
+							error: function (r) {
+								frappe.msgprint(__("Error: {0}", [r.message || "Unknown error"]));
+							},
+						});
+					},
+					function () {}
+				);
+			}, __("Actions"));
 		}
 
 		frm.add_custom_button(__("Reverse UOM Conversions"), function () {
@@ -145,6 +173,18 @@ frappe.realtime.on("item_group_migrate_serials_done", function (data) {
 		(data.error
 			? __("Serial to Dispensing Lot migration failed.")
 			: __("Serial to Dispensing Lot migration completed."));
+	frappe.show_alert({
+		message: msg,
+		indicator: data.error ? "red" : "green",
+	});
+});
+
+frappe.realtime.on("item_group_flag_dispense_lot_done", function (data) {
+	const msg =
+		data.message ||
+		(data.error
+			? __("Enable Has Dispense Lot failed.")
+			: __("Enable Has Dispense Lot completed."));
 	frappe.show_alert({
 		message: msg,
 		indicator: data.error ? "red" : "green",
