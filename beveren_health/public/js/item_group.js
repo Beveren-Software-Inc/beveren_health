@@ -115,6 +115,34 @@ frappe.ui.form.on("Item Group", {
 					function () {}
 				);
 			}, __("Actions"));
+
+			frm.add_custom_button(__("Clear Has Dispense Lot"), function () {
+				frappe.confirm(
+					__(
+						"This will uncheck <b>Has Dispense Lot</b> on all items in this group. "
+						+ "The job runs in the background. Continue?"
+					),
+					function () {
+						frappe.call({
+							method:
+								"beveren_health.beveren_health.customize.item_group.clear_has_dispense_lot_for_item_group",
+							args: { item_group: frm.doc.name },
+							callback: function (r) {
+								if (r.message && r.message.queued) {
+									frappe.show_alert({
+										message: r.message.message,
+										indicator: "blue",
+									});
+								}
+							},
+							error: function (r) {
+								frappe.msgprint(__("Error: {0}", [r.message || "Unknown error"]));
+							},
+						});
+					},
+					function () {}
+				);
+			}, __("Actions"));
 		}
 
 		frm.add_custom_button(__("Reverse UOM Conversions"), function () {
@@ -185,6 +213,18 @@ frappe.realtime.on("item_group_flag_dispense_lot_done", function (data) {
 		(data.error
 			? __("Enable Has Dispense Lot failed.")
 			: __("Enable Has Dispense Lot completed."));
+	frappe.show_alert({
+		message: msg,
+		indicator: data.error ? "red" : "green",
+	});
+});
+
+frappe.realtime.on("item_group_clear_dispense_lot_done", function (data) {
+	const msg =
+		data.message ||
+		(data.error
+			? __("Clear Has Dispense Lot failed.")
+			: __("Clear Has Dispense Lot completed."));
 	frappe.show_alert({
 		message: msg,
 		indicator: data.error ? "red" : "green",
