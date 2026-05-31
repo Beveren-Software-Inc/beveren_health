@@ -393,6 +393,8 @@ fixtures = [
                 "Stock Entry Detail-custom_section_break_81xt5",
                 "Stock Reconciliation Item-custom_dispensing_lot",
                 "Stock Reconciliation Item-custom_section_break_vv0xo",
+                "Delivery Note Item-custom_section_break_o7y1z",
+                "Delivery Note Item-custom_dispensing_lot",
             ]]
         ]
     }
