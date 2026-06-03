@@ -24,6 +24,10 @@ DOCTYPE_CONFIG = {
         "qty_field": "qty",
         "amount_field": "amount",
         "rate_field": "rate",
+        "gtin_field": "custom_gstin",
+        "expiry_field": "expiry_date",
+        "expiry_field_extra": "custom_expiry_date",
+        "mfg_field": "custom_manufacturing_date",
         "additional_fields": {
             "current_qty": "qty",
             "current_amount": "amount"
@@ -40,8 +44,49 @@ DOCTYPE_CONFIG = {
             "basic_rate": "rate",
             "basic_amount": "amount"
         }
-    }
+    },
+    "Stock Scanner": {
+        "child_doctype": "Stock Scanner Item",
+        "item_field": "items",
+        "qty_field": "qty",
+        "amount_field": "amount",
+        "rate_field": "valuation_rate",
+        "lot_field": "serial_no",
+        "gtin_field": "gtin",
+        "expiry_field": "expiry_date",
+        "mfg_field": "manufacturing_date",
+        "additional_fields": {
+            "current_qty": "qty",
+            "current_amount": "amount"
+        }
+    },
 }
+
+
+def _lot_field(config):
+    return config.get("lot_field") or DISPENSING_LOT_FIELD
+
+
+def _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=False):
+    """Map barcode GTIN / expiry / mfg onto the child row fields for this doctype."""
+    gtin_field = config.get("gtin_field") or "custom_gstin"
+    expiry_field = config.get("expiry_field") or "expiry_date"
+    expiry_extra = config.get("expiry_field_extra")
+    mfg_field = config.get("mfg_field") or "custom_manufacturing_date"
+
+    gtin_val = parsed.get("gtin")
+    if gtin_val and (not only_if_empty or not row.get(gtin_field)):
+        update_values[gtin_field] = gtin_val
+
+    expiry_val = parsed.get("expiry_date")
+    if expiry_val and (not only_if_empty or not row.get(expiry_field)):
+        update_values[expiry_field] = expiry_val
+        if expiry_extra:
+            update_values[expiry_extra] = expiry_val
+
+    mfg_val = parsed.get("mfg_date")
+    if mfg_val and (not only_if_empty or not row.get(mfg_field)):
+        update_values[mfg_field] = mfg_val
 @frappe.whitelist()
 def process_batch_scan(
 	barcode_data,
@@ -163,8 +208,9 @@ def assign_to_current_row(config, item, parsed, warehouse=None):
 
 
 def append_dispensing_lot_to_row(doc, config, row, parsed, item):
-    """Case 2 – same batch scanned again: append to custom_dispensing_lot, recalculate qty."""
-    dispensing_lots = row.get(DISPENSING_LOT_FIELD) or ""
+    """Case 2 – same batch scanned again: append dispensing lot, recalculate qty."""
+    lot_field = _lot_field(config)
+    dispensing_lots = row.get(lot_field) or ""
 
     new_serial = parsed.get("serial_no")
     existing = split_dispensing_lots(dispensing_lots)
@@ -188,11 +234,10 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
     update_values = {
         config["qty_field"]: new_qty,
         config["amount_field"]: new_amount,
-        DISPENSING_LOT_FIELD: dispensing_lots,
+        lot_field: dispensing_lots,
     }
 
-    if parsed.get("gtin") and not row.get("custom_gstin"):
-        update_values["custom_gstin"] = parsed.get("gtin")
+    _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=True)
 
     if hasattr(row, "rate"):
         update_values["rate"] = rate
@@ -223,6 +268,8 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
         "item_name": item.item_name,
         "batch_no": parsed["batch_no"],
         "gtin": parsed.get("gtin"),
+        "expiry_date": parsed.get("expiry_date"),
+        "mfg_date": parsed.get("mfg_date"),
     }
     
 # def append_serial_to_row(doc, config, row, parsed, item):

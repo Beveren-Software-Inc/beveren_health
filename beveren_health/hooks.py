@@ -66,6 +66,7 @@ doctype_js = {
     "Employee Checkin" : "public/js/employee_checkin.js",
     "Cost Center" : "public/js/cost_center.js",
     "Stock Reconciliation": "public/js/stock_reconciliation.js",
+    "Stock Scanner": "public/js/stock_scanner.js",
     "Stock Entry": "public/js/stock_entry.js",
     "Sales Invoice": "public/js/sales_invoice.js",
 }
@@ -209,8 +210,13 @@ doc_events = {
         "on_submit": [
             "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
             "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+            "beveren_health.beveren_health.customize.stock_scanner.mark_stock_scanners_on_reconciliation_submit",
         ],
-        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+        "on_cancel": [
+            "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+            "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
+        ],
+        "on_trash": "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
     },
     "Stock Entry": {
         "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
