@@ -33,6 +33,63 @@ def _file_url_to_base64(file_url):
 	return f"data:{mime_type};base64,{encoded}"
 
 
+def _ensure_batch_barcode(item_code, batch_name):
+	"""
+	Ensure the Item has a barcode row linked to this batch with an image.
+	Generates barcode + image on demand when missing (for label printing).
+	Returns (barcode_value, barcode_image_url) or (None, None) on failure.
+	"""
+	from beveren_health.beveren_health.utils.barcode import (
+		DEFAULT_BARCODE_TYPE,
+		generate_barcode_image,
+		generate_ean13_barcode,
+	)
+
+	item_doc = frappe.get_doc("Item", item_code)
+	barcode_row = None
+
+	for row in item_doc.barcodes or []:
+		if getattr(row, "custom_batch", None) == batch_name:
+			barcode_row = row
+			break
+
+	if barcode_row and barcode_row.barcode:
+		custom_image = getattr(barcode_row, "custom_image", None)
+		if not custom_image:
+			image_path = generate_barcode_image(
+				barcode_row.barcode, barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
+			)
+			frappe.db.set_value("Item Barcode", barcode_row.name, "custom_image", image_path)
+			custom_image = image_path
+		return barcode_row.barcode, custom_image
+
+	new_barcode = generate_ean13_barcode()
+	if frappe.db.exists("Item Barcode", {"barcode": new_barcode}):
+		new_barcode = generate_ean13_barcode()
+		if frappe.db.exists("Item Barcode", {"barcode": new_barcode}):
+			frappe.log_error(
+				title="Batch label barcode generation",
+				message=f"Could not generate unique barcode for batch {batch_name}",
+			)
+			return None, None
+
+	image_path = generate_barcode_image(new_barcode, DEFAULT_BARCODE_TYPE)
+	item_doc.append(
+		"barcodes",
+		{
+			"barcode": new_barcode,
+			"barcode_type": DEFAULT_BARCODE_TYPE,
+			"custom_image": image_path,
+			"custom_batch": batch_name,
+		},
+	)
+	item_doc.flags.ignore_validate = True
+	item_doc.flags.ignore_mandatory = True
+	item_doc.save(ignore_permissions=True)
+
+	return new_barcode, image_path
+
+
 def _item_name_line(item_doc, batch_uom=None):
 	"""Build: Item Name + Concentration (custom_strength) + Pharmaceutical Form + UOM (batch uom) + No of Pack (custom_number_of_pack)."""
 	uom = (batch_uom or item_doc.get("stock_uom") or "").strip()
@@ -59,18 +116,7 @@ def get_label_data_for_batch(batch_name):
 	item_code = batch_doc.item
 	item_doc = frappe.get_doc("Item", item_code)
 
-	# Get barcode for THIS SPECIFIC BATCH
-	barcode_image = None
-	barcode_value = None
-	
-	if item_doc.barcodes:
-		for row in item_doc.barcodes:
-			
-			# Check if this barcode row is linked to our batch
-			if getattr(row, "custom_batch", None) == batch_name:
-				barcode_image = getattr(row, "custom_image", None)
-				barcode_value = getattr(row, "barcode", None) or ""
-				break
+	barcode_value, barcode_image = _ensure_batch_barcode(item_code, batch_name)
 
 	# Item Standard Selling Price (standard_rate) inclusive of VAT
 	standard_rate = flt(item_doc.get("standard_rate") or 0)

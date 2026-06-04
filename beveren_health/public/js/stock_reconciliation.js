@@ -437,7 +437,7 @@ function scroll_to_row(frm, row_idx) {
 }
 
 
-//Batch printing
+// Batch printing
 const RECON_LABEL_CSS = `
 	body { font-family: Arial, sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
 	@page { size: 2.299in 1.5in; margin: 0; }
@@ -445,7 +445,7 @@ const RECON_LABEL_CSS = `
 	.label-page:last-child { page-break-after: auto; }
 	.medication-label { width: 100%; height: 100%; border: 1px solid #000; padding: 5px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
 	.barcode-section { text-align: center; margin-bottom: 2px; }
-	.barcode-section img { max-width: 100%; height: 70px; margin-bottom: 1px; image-rendering: crisp-edges; }
+	.barcode-section img { max-width: 100%; height: 52px; margin-bottom: 1px; image-rendering: crisp-edges; }
 	.details-section { padding-top: 1px; font-size: 7px; line-height: 1.1; text-align: center; width: 100%; }
 	.detail-row { margin-bottom: 1px; line-height: 1.1; }
 	.item-name-line { font-family: Georgia, 'Times New Roman', serif; font-size: 8px; font-weight: bold; margin-bottom: 2px; }
@@ -453,16 +453,15 @@ const RECON_LABEL_CSS = `
 	.price-value { font-weight: 900; font-size: 9px; }
 	img { max-width: 100%; height: auto; }
 `;
- 
+
 function build_recon_label_html(data, branch_display) {
-	const barcode_number = (data.barcode_value != null && data.barcode_value !== "") ? data.barcode_value : "N/A";
 	const item_code = data.item_code || "N/A";
 	const item_name_line_val = data.item_name_line || "N/A";
 	const standard_selling_price = data.standard_selling_price != null ? data.standard_selling_price : "N/A";
 	const batch_number = data.batch_no || "N/A";
 	const expiry_date = data.expiry_date != null ? data.expiry_date : "N/A";
 	const branch = branch_display || "N/A";
- 
+
 	return `
 		<div class="medication-label">
 			<div class="details-section" style="border-top: none; padding-top: 0; margin-top: 2px; margin-bottom: 1px;">

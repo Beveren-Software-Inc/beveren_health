@@ -2,7 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
-from beveren_health.beveren_health.utils.barcode import generate_barcode_image
+from beveren_health.beveren_health.utils.barcode import DEFAULT_BARCODE_TYPE, generate_barcode_image
 
 
 def on_update(doc, method):
@@ -17,7 +17,7 @@ def on_update(doc, method):
 		if barcode_row.barcode and not barcode_row.custom_image:
 			try:
 				# Determine barcode type (default to EAN13)
-				barcode_type = barcode_row.barcode_type or "EAN13"
+				barcode_type = barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
 				
 				# Generate barcode image
 				image_path = generate_barcode_image(barcode_row.barcode, barcode_type)
