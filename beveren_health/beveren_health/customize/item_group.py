@@ -9,6 +9,7 @@ from beveren_health.beveren_health.customize.dispensing_lot import (
 	get_pack_size_and_uom,
 )
 from beveren_health.beveren_health.utils.barcode import (
+	DEFAULT_BARCODE_TYPE,
 	generate_barcode_image,
 	generate_ean13_barcode,
 )
@@ -56,7 +57,7 @@ def _run_generate_barcodes_for_item_group(item_group):
 
 		if has_barcode_without_image:
 			try:
-				barcode_type = barcode_row_to_update.barcode_type or "EAN13"
+				barcode_type = barcode_row_to_update.barcode_type or DEFAULT_BARCODE_TYPE
 				image_path = generate_barcode_image(barcode_row_to_update.barcode, barcode_type)
 				barcode_row_to_update.custom_image = image_path
 				item_updated = True
@@ -79,9 +80,9 @@ def _run_generate_barcodes_for_item_group(item_group):
 					)
 					continue
 
-			item_doc.append("barcodes", {"barcode": new_barcode, "barcode_type": "EAN13"})
+			item_doc.append("barcodes", {"barcode": new_barcode, "barcode_type": DEFAULT_BARCODE_TYPE})
 			try:
-				image_path = generate_barcode_image(new_barcode, "EAN13")
+				image_path = generate_barcode_image(new_barcode, DEFAULT_BARCODE_TYPE)
 				item_doc.barcodes[-1].custom_image = image_path
 				item_updated = True
 				generated_barcodes += 1
