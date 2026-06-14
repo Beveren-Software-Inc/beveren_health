@@ -48,6 +48,7 @@ doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
+    "Appraisal": "public/js/appraisal.js",
     "Employee" : "beveren_health/public/js/employee.js",
     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Stock Settings" : "/public/js/stock_settings.js",
@@ -161,6 +162,9 @@ doc_events = {
     "Employee" : {
         "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
     },
+    "Salary Structure": {
+        "before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
+    },
     "Sales Invoice" : {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     },
@@ -227,7 +231,9 @@ scheduler_events = {
 #
 # Specify custom mixins to extend the standard doctype controller.
 extend_doctype_class = {
-	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip"
+	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip",
+	"Appraisal": "beveren_health.beveren_health.customize.appraisal.Appraisal",
+	"Employee Performance Feedback": "beveren_health.beveren_health.customize.employee_performance_feedback.EmployeePerformanceFeedback",
 }
 
 # Overriding Methods
