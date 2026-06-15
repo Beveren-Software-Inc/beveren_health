@@ -48,12 +48,11 @@ doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
+    "Appraisal": "public/js/appraisal.js",
     # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Purchase Receipt":"public/js/purchase_receipt.js",
-
     "Employee" : "beveren_health/public/js/employee.js",
-#     "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
-
+    # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
     "Batch" : "public/js/batch.js",
@@ -167,6 +166,11 @@ doc_events = {
     "Employee" : {
         "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
     },
+    "Salary Structure": {
+        "before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
+    },
+    "Sales Invoice" : {
+        "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     "Sales Invoice": {
         "validate": [
             "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
@@ -176,7 +180,8 @@ doc_events = {
         "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
     "Full and Final Statement" : {
-        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"    },
+        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+    },
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
     },
@@ -274,7 +279,9 @@ scheduler_events = {
 # Specify custom mixins to extend the standard doctype controller.
 extend_doctype_class = {
 	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip",
- "Batch": "beveren_health.beveren_health.override.batch.CustomBatch"
+	"Appraisal": "beveren_health.beveren_health.customize.appraisal.Appraisal",
+	"Employee Performance Feedback": "beveren_health.beveren_health.customize.employee_performance_feedback.EmployeePerformanceFeedback",
+  "Batch": "beveren_health.beveren_health.override.batch.CustomBatch"
 }
 
 
