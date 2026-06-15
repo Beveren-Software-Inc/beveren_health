@@ -1,39 +1,6 @@
-// // Custom scanner field on Stock Entry: custom_scustom_scanner
-// // Similar simple pattern to Pick List custom_scan_transactional_barcode
 
-// frappe.ui.form.on("Stock Entry", {
-// 	custom_scustom_scanner(frm) {
-// 		const barcode = frm.doc.custom_scustom_scanner;
-// 		if (!barcode) return;
 
-// 		frappe.call({
-// 			method: "beveren_health.beveren_health.utils.scanner.get_item_and_batch_from_barcode",
-// 			args: { barcode },
-// 			callback(r) {
-// 				if (!r.message || !r.message.item_code) {
-// 					frappe.msgprint(__("No item found for barcode: {0}", [barcode]));
-// 					frm.set_value("custom_scustom_scanner", "");
-// 					return;
-// 				}
-
-// 				const { item_code, batch_no, qty } = r.message;
-
-// 				// Add row in items (Stock Entry Detail)
-// 				const row = frm.add_child("items");
-// 				row.item_code = item_code;
-// 				if (batch_no) {
-// 					row.batch_no = batch_no;
-// 				}
-// 				row.qty = qty || 1;
-
-// 				frm.refresh_field("items");
-// 				frm.set_value("custom_scustom_scanner", "");
-// 			},
-// 		});
-// 	},
-// });
-
-frappe.ui.form.on('Stock Entry', {
+frappe.ui.form.on('Purchase Receipt', {
     onload: function(frm) {
         frm.current_focused_row = null;
 
@@ -42,9 +9,9 @@ frappe.ui.form.on('Stock Entry', {
         }, 500);
 
         // Inject highlight CSS once
-        if (!document.getElementById('se-scanner-style')) {
+        if (!document.getElementById('pr-scanner-style')) {
             let style = document.createElement('style');
-            style.id = 'se-scanner-style';
+            style.id = 'pr-scanner-style';
             style.textContent = `
                 .grid-row.row-highlight {
                     background-color: #fff3cd !important;
@@ -63,32 +30,16 @@ frappe.ui.form.on('Stock Entry', {
         setTimeout(function() {
             setup_row_click_tracking(frm);
         }, 300);
-    },
-
-    /** Header scanner field (custom_custom_scanner) — same flow as row scanner */
-    custom_custom_scanner: function(frm) {
-        const barcode = (frm.doc.custom_custom_scanner || '').trim();
-        if (!barcode) return;
-
-        frm.set_value('custom_custom_scanner', '');
-
-        const target = get_stock_entry_scan_row(frm);
-        if (!target) {
-            frappe.msgprint(__('Add an item row before scanning.'));
-            return;
-        }
-
-        const { cdt, cdn, row, row_idx } = target;
-        run_stock_entry_scan(frm, cdt, cdn, row, barcode, row_idx);
-    },
+    }
 });
+
 
 function setup_row_click_tracking(frm) {
     if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
     let wrapper = frm.fields_dict['items'].grid.wrapper;
     if (!wrapper) return;
-    wrapper.off('click.se_scanner', '.grid-row');
-    wrapper.on('click.se_scanner', '.grid-row', function() {
+    wrapper.off('click.pr_scanner', '.grid-row');
+    wrapper.on('click.pr_scanner', '.grid-row', function() {
         let idx = $(this).attr('data-idx');
         if (idx) {
             frm.current_focused_row = parseInt(idx) - 1;
@@ -96,181 +47,98 @@ function setup_row_click_tracking(frm) {
     });
 }
 
+
 // ─── Scanner field handler ────────────────────────────────────────────────────
 
-function get_stock_entry_scan_row(frm) {
-    const items = frm.doc.items || [];
-    if (!items.length) {
-        return null;
-    }
-
-    let row_idx =
-        frm.current_focused_row !== null && frm.current_focused_row !== undefined
-            ? frm.current_focused_row
-            : items.length - 1;
-
-    if (row_idx < 0 || row_idx >= items.length) {
-        row_idx = items.length - 1;
-    }
-
-    const row = items[row_idx];
-    return {
-        cdt: row.doctype,
-        cdn: row.name,
-        row,
-        row_idx,
-    };
-}
-
-function run_stock_entry_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
-    barcode = (barcode || '').trim();
-    if (!barcode) return;
-
-    const warehouse = get_warehouse_for_stock_entry(frm, row);
-    if (!warehouse) {
-        frappe.msgprint({
-            title: __('Warehouse required'),
-            indicator: 'orange',
-            message: __(
-                'Set <b>To Warehouse</b> or <b>From Warehouse</b> on the Stock Entry header (or on the row) before scanning.'
-            ),
-        });
-        return;
-    }
-
-    const process = () => {
-        const active_row = locals[cdt] && locals[cdt][cdn] ? locals[cdt][cdn] : row;
-        process_scan(
-            frm,
-            cdt,
-            cdn,
-            active_row,
-            barcode,
-            current_row_idx,
-            get_warehouse_for_stock_entry(frm, active_row)
-        );
-    };
-
-    if (frm.is_new()) {
-        frm.save_or_update({
-            callback: process,
-            error: function () {
-                frappe.msgprint({
-                    title: __('Save Error'),
-                    indicator: 'red',
-                    message: __('Failed to save document. Please save manually and try again.'),
-                });
-            },
-        });
-        return;
-    }
-
-    process();
-}
-
-frappe.ui.form.on('Stock Entry Detail', {
-    custom_scanner: function (frm, cdt, cdn) {
-        const row = locals[cdt][cdn];
-        const barcode = (row.custom_scanner || '').trim();
+frappe.ui.form.on('Purchase Receipt Item', {
+    custom_scanner: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        let barcode = row.custom_scanner;
 
         if (!barcode) return;
 
-        const current_row_idx = frm.doc.items.findIndex((r) => r.name === cdn);
+        // Remember which row triggered this scan
+        let current_row_idx = frm.doc.items.findIndex(r => r.name === cdn);
 
-        // Clear scanner field; barcode is kept in the closure below
+        // Clear scanner immediately so it is ready for the next scan
         frappe.model.set_value(cdt, cdn, 'custom_scanner', '');
 
-        run_stock_entry_scan(frm, cdt, cdn, row, barcode, current_row_idx);
+        if (frm.is_new()) {
+            frm.save_or_update({
+                callback: function () {
+                    process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx);
+                },
+                error: function () {
+                    frappe.msgprint({
+                        title: __('Save Error'),
+                        indicator: 'red',
+                        message: __('Failed to save document. Please save manually and try again.'),
+                    });
+                },
+            });
+            return;
+        }
+
+        process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx);
     },
 });
 
-function get_warehouse_for_stock_entry(frm, row) {
-    // Row-level warehouses first (Stock Entry Detail uses s_warehouse / t_warehouse)
-    if (row) {
-        if (row.t_warehouse) return row.t_warehouse;
-        if (row.s_warehouse) return row.s_warehouse;
-    }
-
-    const doc = frm.doc;
-    const purpose = doc.purpose;
-
-    switch (purpose) {
-        case 'Material Receipt':
-        case 'Manufacture':
-        case 'Repack':
-            return doc.to_warehouse || doc.t_warehouse;
-        case 'Material Issue':
-        case 'Material Transfer for Manufacture':
-            return doc.from_warehouse || doc.s_warehouse;
-        case 'Material Transfer':
-            return doc.to_warehouse || doc.from_warehouse;
-        default:
-            return (
-                doc.to_warehouse ||
-                doc.from_warehouse ||
-                doc.t_warehouse ||
-                doc.s_warehouse
-            );
-    }
-}
-
-function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
-    console.log("Sending to server:", {
+function process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
+        frappe.call({
+            method: "beveren_health.beveren_health.customize.scanner.process_batch_scan",
+            args: {
         barcode_data: barcode,
         document_name: frm.doc.name,
-        doctype: 'Stock Entry',
+        doctype: 'Purchase Receipt',
         current_item_code: row.item_code,
-        current_batch_no: row.batch_no || '',
-        warehouse: warehouse
-    });
+        current_batch_no: row.batch_no || ''
+    },
+            callback: function(r) {
+                if (!r.message || !r.message.success) {
+                    frappe.msgprint({
+                        title: __('Scan Error'),
+                        indicator: 'red',
+                        message: (r.message && r.message.message) || 'Failed to process barcode'
+                    });
+                    return;
+                }
 
-    frappe.call({
-        method: "beveren_health.beveren_health.customize.scanner.process_batch_scan",
-        args: {
-            barcode_data: barcode,
-            document_name: frm.doc.name,
-            doctype: 'Stock Entry',
-            current_item_code: row.item_code,
-            current_batch_no: row.batch_no || '',
-            current_row_name: cdn,
-            warehouse: warehouse
-        },
-        callback: function(r) {
-            if (!r.message || !r.message.success) {
-                frappe.msgprint({
-                    title: __('Scan Error'),
-                    indicator: 'red',
-                    message: (r.message && r.message.message) || 'Failed to process barcode'
-                });
-                return;
+                let result = r.message;
+
+                switch (result.action) {
+
+                    // Case 1: First scan on empty row → assign batch + serial
+                    case 'assign_to_current':
+                        handle_assign_to_current(frm, cdt, cdn, result, current_row_idx);
+                        break;
+
+                    // Case 2: Same batch scanned again → append serial only
+                    case 'append_serial':
+                        handle_append_serial(frm, cdt, cdn, result, current_row_idx);
+                        break;
+
+                    // Case 3: Different batch, current row already has a batch → add new child row
+                    case 'create_new_row':
+                        handle_create_new_row(frm, result);
+                        break;
+
+                    // Case 4: Batch found on a different row → move focus there, append serial
+                    case 'move_to_existing':
+                        handle_move_to_existing(frm, result);
+                        break;
+                }
+                
+                // ─── SAVE AND RETURN CURSOR ─────────────────────────────────────
+                // After any successful scan, save the document and refocus
+                save_and_refocus_scanner(frm, result);
+            },
+            error: function(err) {
+                console.error('Scan error:', err);
+                frappe.msgprint(__('Error processing scan. Check server logs.'));
             }
-
-            let result = r.message;
-
-            switch (result.action) {
-                case 'assign_to_current':
-                    handle_assign_to_current(frm, cdt, cdn, result, current_row_idx, warehouse);
-                    break;
-                case 'append_serial':
-                    handle_append_serial(frm, cdt, cdn, result, current_row_idx);
-                    break;
-                case 'create_new_row':
-                    handle_create_new_row(frm, result, warehouse);
-                    break;
-                case 'move_to_existing':
-                    handle_move_to_existing(frm, result);
-                    break;
-            }
-            
-            // Save and refocus after successful scan
-            save_and_refocus_scanner(frm, result);
-        },
-        error: function(err) {
-            console.error('Scan error:', err);
-            frappe.msgprint(__('Error processing scan. Check server logs.'));
-        }
-    });
+        });
 }
+
 
 // ─── Save and refocus function ───────────────────────────────────────────────
 
@@ -317,6 +185,7 @@ function refocus_scanner_field(frm, result) {
         }
     } else {
         // For assign_to_current and append_serial, focus on the current row
+        // The current row is the one that was just updated
         if (result.row_name) {
             target_row_name = result.row_name;
             target_row_idx = frm.doc.items.findIndex(r => r.name === result.row_name);
@@ -341,10 +210,12 @@ function refocus_scanner_field(frm, result) {
     // Focus on the scanner field of the target row
     if (target_row_name) {
         setTimeout(function() {
+            // Find the scanner field in the grid
             let grid = frm.fields_dict['items'].grid;
             if (grid && grid.grid_rows_by_docname) {
                 let grid_row = grid.grid_rows_by_docname[target_row_name];
                 if (grid_row && grid_row.columns) {
+                    // Find the custom_scanner field in this row
                     let scanner_field = grid_row.columns.find(col => col.fieldname === 'custom_scanner');
                     if (scanner_field && scanner_field.$input) {
                         scanner_field.$input.focus();
@@ -353,6 +224,7 @@ function refocus_scanner_field(frm, result) {
                             scroll_to_row(frm, target_row_idx);
                         }
                     } else {
+                        // Fallback: try to focus on any input in the row
                         let $row = grid_row.$row;
                         if ($row) {
                             $row.find('input:first').focus();
@@ -364,9 +236,10 @@ function refocus_scanner_field(frm, result) {
     }
 }
 
+
 // ─── Case 1 ───────────────────────────────────────────────────────────────────
 
-function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
+function handle_assign_to_current(frm, cdt, cdn, result, row_idx) {
     frappe.model.set_value(cdt, cdn, 'item_code', result.item_code);
     frappe.model.set_value(cdt, cdn, 'item_name', result.item_name);
     frappe.model.set_value(cdt, cdn, 'use_serial_batch_fields', 1);
@@ -375,20 +248,16 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
     }
     frappe.model.set_value(cdt, cdn, 'batch_no', result.batch_no);
 
-    // Set appropriate warehouse fields based on Stock Entry purpose
-    set_warehouse_for_row(frm, cdt, cdn, warehouse);
-
     if (result.serial_no) {
         beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, result.serial_no, frm);
     } else {
         frappe.model.set_value(cdt, cdn, 'qty', 1);
-        frappe.model.set_value(cdt, cdn, 'transfer_qty', 1);
     }
     if (result.expiry_date) {
         frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
         frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
     }
-    if (result.gtin) {
+    if (result.gtin){
         frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
     }
     if (result.mfg_date) {
@@ -406,55 +275,17 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
     });
 }
 
-function set_warehouse_for_row(frm, cdt, cdn, warehouse) {
-    if (!warehouse) return;
-
-    const purpose = frm.doc.purpose;
-    const doc = frm.doc;
-
-    switch (purpose) {
-        case 'Material Receipt':
-        case 'Manufacture':
-        case 'Repack':
-            frappe.model.set_value(cdt, cdn, 't_warehouse', warehouse);
-            break;
-        case 'Material Issue':
-        case 'Material Transfer for Manufacture':
-            frappe.model.set_value(cdt, cdn, 's_warehouse', warehouse);
-            break;
-        case 'Material Transfer':
-            frappe.model.set_value(
-                cdt,
-                cdn,
-                's_warehouse',
-                doc.from_warehouse || doc.s_warehouse
-            );
-            frappe.model.set_value(
-                cdt,
-                cdn,
-                't_warehouse',
-                doc.to_warehouse || doc.t_warehouse || warehouse
-            );
-            break;
-        default:
-            frappe.model.set_value(cdt, cdn, 't_warehouse', warehouse);
-    }
-}
 
 // ─── Case 2 ───────────────────────────────────────────────────────────────────
 
 function handle_append_serial(frm, cdt, cdn, result, row_idx) {
+    // Server already persisted qty + serial — sync form model to match
     frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
-    frappe.model.set_value(cdt, cdn, 'transfer_qty', result.new_qty);
     frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
-    if (result.gtin) {
-        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
-    }
     beveren_health.dispensing_lot_scan.set_lots(
         cdt,
         cdn,
-        result.all_dispensing_lots || result.all_serials,
-        frm
+        result.all_dispensing_lots || result.all_serials
     );
 
     frm.refresh_field('items');
@@ -468,50 +299,27 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx) {
     });
 }
 
+
 // ─── Case 3 ───────────────────────────────────────────────────────────────────
 
-function handle_create_new_row(frm, result, warehouse) {
-    let new_row_data = {
+function handle_create_new_row(frm, result) {
+    // Add a brand-new child row for the different batch
+    let new_row = frm.add_child('items', {
         item_code: result.item_code,
         item_name: result.item_name,
         qty: result.qty || 1,
-        transfer_qty: result.qty || 1,
+        use_serial_batch_fields: 1,
         uom: result.uom,
         rate: result.rate || 0,
         amount: result.amount || 0,
-        basic_rate: result.rate || 0,
-        basic_amount: result.amount || 0,
         batch_no: result.batch_no,
         custom_dispensing_lot: result.serial_no || '',
         expiry_date: result.expiry_date || '',
         custom_expiry_date: result.expiry_date || '',
         custom_manufacturing_date: result.mfg_date || '',
-        custom_gstin: result.gtin || '',
-        use_serial_batch_fields: 1
-    };
-    
-    // Set warehouse based on purpose
-    let purpose = frm.doc.purpose;
-    switch(purpose) {
-        case 'Material Receipt':
-        case 'Manufacture':
-        case 'Repack':
-            new_row_data.t_warehouse = warehouse;
-            break;
-        case 'Material Issue':
-            new_row_data.s_warehouse = warehouse;
-            break;
-        case 'Material Transfer':
-        case 'Material Transfer for Manufacture':
-            new_row_data.s_warehouse = frm.doc.from_warehouse || frm.doc.s_warehouse;
-            new_row_data.t_warehouse = frm.doc.to_warehouse || frm.doc.t_warehouse || warehouse;
-            break;
-        default:
-            new_row_data.s_warehouse = warehouse;
-            new_row_data.t_warehouse = warehouse;
-    }
-    
-    let new_row = frm.add_child('items', new_row_data);
+        custom_gstin: result.gtin || ''
+    });
+
     frm.refresh_field('items');
 
     let new_idx = frm.doc.items.findIndex(r => r.name === new_row.name);
@@ -525,6 +333,7 @@ function handle_create_new_row(frm, result, warehouse) {
     });
 }
 
+
 // ─── Case 4 ───────────────────────────────────────────────────────────────────
 
 function handle_move_to_existing(frm, result) {
@@ -535,6 +344,7 @@ function handle_move_to_existing(frm, result) {
         let cdt = target_row.doctype;
         let cdn = target_row.name;
 
+        // Append serial if not already present
         if (result.serial_no) {
             let updated_lots = beveren_health.dispensing_lot_scan.append_lot(
                 target_row.custom_dispensing_lot,
@@ -545,21 +355,20 @@ function handle_move_to_existing(frm, result) {
 
                 let serial_count = beveren_health.dispensing_lot_scan.count_lots(updated_lots);
                 frappe.model.set_value(cdt, cdn, 'qty', serial_count);
-                frappe.model.set_value(cdt, cdn, 'transfer_qty', serial_count);
                 frappe.model.set_value(cdt, cdn, 'amount', serial_count * (target_row.rate || 0));
-                frappe.model.set_value(cdt, cdn, 'basic_amount', serial_count * (target_row.rate || 0));
             }
         }
 
+        // Fill dates if not already set
         if (result.expiry_date && !target_row.expiry_date) {
             frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
             frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
         }
+        if (result.gtin){
+        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
+    }
         if (result.mfg_date && !target_row.custom_manufacturing_date) {
             frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
-        }
-        if (result.gtin && !target_row.custom_gstin) {
-            frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
         }
     }
 
@@ -573,6 +382,7 @@ function handle_move_to_existing(frm, result) {
         indicator: 'blue'
     });
 }
+
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
@@ -593,9 +403,11 @@ function scroll_to_row(frm, row_idx) {
         
         let $rows = frm.fields_dict['items'].grid.wrapper.find('.grid-row');
         
+        // Check if the row exists
         if ($rows.length > row_idx && $rows[row_idx]) {
             let rowElement = $rows[row_idx];
             
+            // Check if it's a jQuery object or DOM element
             if (rowElement && typeof rowElement.scrollIntoView === 'function') {
                 rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             } else if (rowElement && rowElement[0] && typeof rowElement[0].scrollIntoView === 'function') {

@@ -26,7 +26,7 @@ app_license = "mit"
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/beveren_health/css/beveren_health.css"
-# app_include_js = "/assets/beveren_health/js/beveren_health.js"
+app_include_js = "/assets/beveren_health/js/dispensing_lot_scan_helpers.js"
 
 # include js, css files in header of web template
 # web_include_css = "/assets/beveren_health/css/beveren_health.css"
@@ -49,12 +49,14 @@ doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
 
 doctype_js = {
     "Appraisal": "public/js/appraisal.js",
+    # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+    "Purchase Receipt":"public/js/purchase_receipt.js",
     "Employee" : "beveren_health/public/js/employee.js",
-    "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+    # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
     "Stock Settings" : "/public/js/stock_settings.js",
     "Item" : "/public/js/item.js",
     "Batch" : "public/js/batch.js",
-    "Item Group" : "beveren_health/public/js/item_group.js",
+    "Item Group": "public/js/item_group.js",
     "Overtime Slip" : "public/js/overtime_slip.js",
     "Salary Slip" : "public/js/salary_slip.js",
     "Holiday List" : "public/js/holiday_list.js",
@@ -63,7 +65,9 @@ doctype_js = {
     "Employee Checkin" : "public/js/employee_checkin.js",
     "Cost Center" : "public/js/cost_center.js",
     "Stock Reconciliation": "public/js/stock_reconciliation.js",
-    "Stock Entry": "beveren_health/public/js/stock_entry.js",
+    "Stock Scanner": "public/js/stock_scanner.js",
+    "Stock Entry": "public/js/stock_entry.js",
+    "Sales Invoice": "public/js/sales_invoice.js",
 }
 
 # Svg Icons
@@ -167,9 +171,17 @@ doc_events = {
     },
     "Sales Invoice" : {
         "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
+    "Sales Invoice": {
+        "validate": [
+            "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
+            "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+        ],
+        "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
+        "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
     "Full and Final Statement" : {
-        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"    },
+        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+    },
     "Attendance" : {
         "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
     },
@@ -181,8 +193,43 @@ doc_events = {
     },
     "Batch": {
         "before_save": "beveren_health.beveren_health.override.batch.before_save",
-        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save"
-    }
+        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save",
+        # "validate": "beveren_health.beveren_health.override.batch.validate_batch"
+    },
+    
+    "Serial No": {
+        "before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"
+    },
+    "Purchase Receipt": {
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+        ],
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+    },
+    "Stock Reconciliation": {
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+            "beveren_health.beveren_health.customize.stock_scanner.mark_stock_scanners_on_reconciliation_submit",
+        ],
+        "on_cancel": [
+            "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+            "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
+        ],
+        "on_trash": "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
+    },
+    "Stock Entry": {
+        "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
+        "on_submit": [
+            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+        ],
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+    },
+    
 }
 
 
@@ -234,7 +281,10 @@ extend_doctype_class = {
 	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip",
 	"Appraisal": "beveren_health.beveren_health.customize.appraisal.Appraisal",
 	"Employee Performance Feedback": "beveren_health.beveren_health.customize.employee_performance_feedback.EmployeePerformanceFeedback",
+  "Batch": "beveren_health.beveren_health.override.batch.CustomBatch"
 }
+
+
 
 # Overriding Methods
 # ------------------------------
@@ -331,7 +381,31 @@ fixtures = [
                 "Cost Center-custom_address_html",
                 "Stock Entry-custom_custom_scanner",
                 "Stock Reconciliation-custom_custom_scanner",
-                "Item Barcode-custom_batch"
+                "Item Barcode-custom_batch",
+                "Purchase Receipt Item-custom_scanner",
+                "Batch-custom_original_batch_id",
+                "Stock Entry Detail-custom_expiry_date",
+                "Stock Entry Detail-custom_manufacturing_date",
+                "Stock Reconciliation Item-custom_expiry_date",
+                "Stock Reconciliation Item-custom_manufacturing_date",
+                "Stock Reconciliation Item-custom_scanner",
+                "Stock Entry Detail-custom_scanner",
+                "Stock Entry Detail-custom_column_break_ikwni",
+                "Stock Reconciliation Item-custom_gstin",
+                "Stock Entry Detail-custom_gstin",
+                "Purchase Receipt Item-custom_gstin",
+                "Serial No-custom_gtin",
+                "Sales Invoice Item-custom_dispensing_lot",
+                "Item-custom_has_dispense_lot",
+                "Sales Invoice Item-custom_section_break_k4p2l",
+                "Purchase Receipt Item-custom_dispensing_lot",
+                "Purchase Receipt Item-custom_section_break_qpm82",
+                "Stock Entry Detail-custom_dispensing_lot",
+                "Stock Entry Detail-custom_section_break_81xt5",
+                "Stock Reconciliation Item-custom_dispensing_lot",
+                "Stock Reconciliation Item-custom_section_break_vv0xo",
+                "Delivery Note Item-custom_section_break_o7y1z",
+                "Delivery Note Item-custom_dispensing_lot",
             ]]
         ]
     }

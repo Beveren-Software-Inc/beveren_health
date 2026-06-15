@@ -1,8 +1,93 @@
 # Copyright (c) 2026, Beveren Software and contributors
 # For license information, please see license.txt
 
+import base64
+import mimetypes
+import os
+
 import frappe
 from frappe.utils import flt, formatdate
+
+
+def _file_url_to_base64(file_url):
+	"""Convert a Frappe file URL to a base64 data URI so it renders
+	regardless of private/public permissions or session context."""
+	if not file_url:
+		return None
+
+	site_path = frappe.get_site_path()
+
+	if file_url.startswith("/private/files/") or file_url.startswith("/files/"):
+		abs_path = os.path.join(site_path, file_url.lstrip("/"))
+	elif file_url.startswith("/"):
+		abs_path = os.path.join(site_path, "public", file_url.lstrip("/"))
+	else:
+		return file_url
+
+	if not os.path.isfile(abs_path):
+		return file_url
+
+	mime_type = mimetypes.guess_type(abs_path)[0] or "image/png"
+	with open(abs_path, "rb") as f:
+		encoded = base64.b64encode(f.read()).decode()
+	return f"data:{mime_type};base64,{encoded}"
+
+
+def _ensure_batch_barcode(item_code, batch_name):
+	"""
+	Ensure the Item has a barcode row linked to this batch with an image.
+	Generates barcode + image on demand when missing (for label printing).
+	Returns (barcode_value, barcode_image_url) or (None, None) on failure.
+	"""
+	from beveren_health.beveren_health.utils.barcode import (
+		DEFAULT_BARCODE_TYPE,
+		generate_barcode_image,
+		generate_ean13_barcode,
+	)
+
+	item_doc = frappe.get_doc("Item", item_code)
+	barcode_row = None
+
+	for row in item_doc.barcodes or []:
+		if getattr(row, "custom_batch", None) == batch_name:
+			barcode_row = row
+			break
+
+	if barcode_row and barcode_row.barcode:
+		custom_image = getattr(barcode_row, "custom_image", None)
+		if not custom_image:
+			image_path = generate_barcode_image(
+				barcode_row.barcode, barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
+			)
+			frappe.db.set_value("Item Barcode", barcode_row.name, "custom_image", image_path)
+			custom_image = image_path
+		return barcode_row.barcode, custom_image
+
+	new_barcode = generate_ean13_barcode()
+	if frappe.db.exists("Item Barcode", {"barcode": new_barcode}):
+		new_barcode = generate_ean13_barcode()
+		if frappe.db.exists("Item Barcode", {"barcode": new_barcode}):
+			frappe.log_error(
+				title="Batch label barcode generation",
+				message=f"Could not generate unique barcode for batch {batch_name}",
+			)
+			return None, None
+
+	image_path = generate_barcode_image(new_barcode, DEFAULT_BARCODE_TYPE)
+	item_doc.append(
+		"barcodes",
+		{
+			"barcode": new_barcode,
+			"barcode_type": DEFAULT_BARCODE_TYPE,
+			"custom_image": image_path,
+			"custom_batch": batch_name,
+		},
+	)
+	item_doc.flags.ignore_validate = True
+	item_doc.flags.ignore_mandatory = True
+	item_doc.save(ignore_permissions=True)
+
+	return new_barcode, image_path
 
 
 def _item_name_line(item_doc, batch_uom=None):
@@ -31,25 +116,30 @@ def get_label_data_for_batch(batch_name):
 	item_code = batch_doc.item
 	item_doc = frappe.get_doc("Item", item_code)
 
-	# Get barcode for THIS SPECIFIC BATCH
-	barcode_image = None
-	barcode_value = None
-	
-	if item_doc.barcodes:
-		for row in item_doc.barcodes:
-			
-			# Check if this barcode row is linked to our batch
-			if getattr(row, "custom_batch", None) == batch_name:
-				barcode_image = getattr(row, "custom_image", None)
-				barcode_value = getattr(row, "barcode", None) or ""
-				break
+	barcode_value, barcode_image = _ensure_batch_barcode(item_code, batch_name)
 
-	# Item Standard Selling Price (standard_rate)
+	# Item Standard Selling Price (standard_rate) inclusive of VAT
 	standard_rate = flt(item_doc.get("standard_rate") or 0)
 	company = frappe.get_all("Company", fields=["name", "default_currency"], limit=1)
 	currency = company[0].get("default_currency") if company else "USD"
+
+	# Fetch the tax rate from the item's Item Tax Template and apply it
+	tax_rate = 0.0
+	if item_doc.taxes:
+		item_tax_template = item_doc.taxes[0].get("item_tax_template")
+		if item_tax_template:
+			tax_details = frappe.get_all(
+				"Item Tax Template Detail",
+				filters={"parent": item_tax_template},
+				fields=["tax_rate"],
+				limit=1,
+			)
+			if tax_details:
+				tax_rate = flt(tax_details[0].tax_rate)
+
+	vat_inclusive_rate = standard_rate * (1 + tax_rate / 100)
 	standard_selling_price = frappe.format_value(
-		standard_rate, {"fieldtype": "Currency", "options": currency}
+		vat_inclusive_rate, {"fieldtype": "Currency", "options": currency}
 	)
 
 	expiry_date = batch_doc.expiry_date
@@ -61,57 +151,13 @@ def get_label_data_for_batch(batch_name):
 	return {
 		"item_code": item_code,
 		"item_name_line": _item_name_line(item_doc, batch_doc.get("uom")),
-		"barcode_image": barcode_image,
+		"barcode_image": _file_url_to_base64(barcode_image),
 		"barcode_value": barcode_value or "",
 		"standard_selling_price": standard_selling_price,
 		"batch_no": batch_name,
 		"expiry_date": expiry_date,
 	}
-# def get_label_data_for_batch(batch_name):
-# 	"""
-# 	Get all data needed to print a label for a Batch.
-# 	Label order: Barcode Image, Barcode Number, Item Code, Item Name line, Standard Selling Price, Batch Number, Expiry Date.
-# 	"""
-# 	if not batch_name or not frappe.db.exists("Batch", batch_name):
-# 		return None
-
-# 	batch_doc = frappe.get_doc("Batch", batch_name)
-# 	item_code = batch_doc.item
-# 	item_doc = frappe.get_doc("Item", item_code)
-
-# 	barcode_image = None
-# 	barcode_value = None
-# 	if item_doc.barcodes:
-# 		for row in item_doc.barcodes:
-# 			if getattr(row, "custom_image", None):
-# 				barcode_image = row.custom_image
-# 				barcode_value = getattr(row, "barcode", None) or ""
-# 				break
-
-# 	# Item Standard Selling Price (standard_rate)
-# 	standard_rate = flt(item_doc.get("standard_rate") or 0)
-# 	company = frappe.get_all("Company", fields=["name", "default_currency"], limit=1)
-# 	currency = company[0].get("default_currency") if company else "USD"
-# 	standard_selling_price = frappe.format_value(
-# 		standard_rate, {"fieldtype": "Currency", "options": currency}
-# 	)
-
-# 	expiry_date = batch_doc.expiry_date
-# 	if expiry_date:
-# 		expiry_date = formatdate(expiry_date)
-# 	else:
-# 		expiry_date = "N/A"
-
-# 	return {
-# 		"item_code": item_code,
-# 		"item_name_line": _item_name_line(item_doc, batch_doc.get("uom")),
-# 		"barcode_image": barcode_image,
-# 		"barcode_value": barcode_value or "",
-# 		"standard_selling_price": standard_selling_price,
-# 		"batch_no": batch_name,
-# 		"expiry_date": expiry_date,
-# 	}
-
+ 
 
 @frappe.whitelist()
 def get_batch_and_expiry_from_bundle(serial_and_batch_bundle):
