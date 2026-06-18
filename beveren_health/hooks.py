@@ -64,6 +64,7 @@ doctype_js = {
     "Cost Center" : "public/js/cost_center.js",
     "Stock Reconciliation": "public/js/stock_reconciliation.js",
     "Stock Entry": "beveren_health/public/js/stock_entry.js",
+    "Full and Final Statement": "public/js/full_and_final_statement.js",
 }
 
 # Svg Icons
@@ -105,6 +106,10 @@ doctype_js = {
 
 # before_install = "beveren_health.install.before_install"
 # after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
+
+after_migrate = [
+    "beveren_health.scripts.create_fnf_from_xlsx.run"
+]
 
 # Uninstallation
 # ------------
@@ -234,6 +239,7 @@ extend_doctype_class = {
 	"Overtime Slip": "beveren_health.beveren_health.customize.overtime_slip.OvertimeSlip",
 	"Appraisal": "beveren_health.beveren_health.customize.appraisal.Appraisal",
 	"Employee Performance Feedback": "beveren_health.beveren_health.customize.employee_performance_feedback.EmployeePerformanceFeedback",
+	"Full and Final Statement": "beveren_health.beveren_health.customize.full_and_final_statement_class.FullandFinalStatement",
 }
 
 # Overriding Methods

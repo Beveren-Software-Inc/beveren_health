@@ -1,0 +1,350 @@
+{
+ "actions": [],
+ "autoname": "HR-IND-.#####",
+ "creation": "2026-06-14 12:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "designation",
+  "column_break_1",
+  "posting_date",
+  "department",
+  "cost_center",
+  "column_break_ornu",
+  "company",
+  "status",
+  "amended_from",
+  "employment_details_section",
+  "date_of_joining",
+  "indemnity_cutoff_date",
+  "column_break_2",
+  "relieving_date",
+  "column_break_rmlx",
+  "nationality",
+  "is_gosi_registered",
+  "calculation_section",
+  "consider_full_salary_after_cutoff_date",
+  "base_salary",
+  "basic_salary",
+  "column_break_3",
+  "eligible_days_before",
+  "eligible_days_after",
+  "amounts_section",
+  "indemnity_before",
+  "column_break_4",
+  "indemnity_after",
+  "column_break_zfmw",
+  "amount",
+  "payment_section",
+  "pay_via_salary_slip",
+  "column_break_5",
+  "salary_component",
+  "payroll_date",
+  "column_break_igak",
+  "expense_account",
+  "payable_account"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.department",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "employee.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "default": "Today",
+   "fieldname": "posting_date",
+   "fieldtype": "Date",
+   "label": "Posting Date",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nSubmitted\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Indemnity",
+   "print_hide": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "employment_details_section",
+   "fieldtype": "Section Break",
+   "label": "Employment Details"
+  },
+  {
+   "fetch_from": "employee.date_of_joining",
+   "fieldname": "date_of_joining",
+   "fieldtype": "Date",
+   "label": "Date of Joining",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.relieving_date",
+   "fieldname": "relieving_date",
+   "fieldtype": "Date",
+   "label": "Relieving Date",
+   "read_only": 1
+  },
+  {
+   "description": "Fetched from HR Settings",
+   "fieldname": "indemnity_cutoff_date",
+   "fieldtype": "Date",
+   "label": "Indemnity Cutoff Date",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "employee.custom_nationality",
+   "fieldname": "nationality",
+   "fieldtype": "Link",
+   "label": "Nationality",
+   "options": "Nationality",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fetch_from": "employee.custom_under_gosi_registered_",
+   "fieldname": "is_gosi_registered",
+   "fieldtype": "Check",
+   "label": "Under GOSI Registered",
+   "read_only": 1
+  },
+  {
+   "fieldname": "calculation_section",
+   "fieldtype": "Section Break",
+   "label": "Calculation"
+  },
+  {
+   "default": "0",
+   "fieldname": "consider_full_salary_after_cutoff_date",
+   "fieldtype": "Check",
+   "label": "Consider Full Salary After Cutoff Date"
+  },
+  {
+   "fieldname": "base_salary",
+   "fieldtype": "Currency",
+   "label": "Base Salary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "basic_salary",
+   "fieldtype": "Currency",
+   "label": "Basic Salary",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "eligible_days_before",
+   "fieldtype": "Float",
+   "label": "Eligible Days (Before Cutoff)",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "eligible_days_after",
+   "fieldtype": "Float",
+   "label": "Eligible Days (After Cutoff)",
+   "precision": "3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amounts_section",
+   "fieldtype": "Section Break",
+   "label": "Indemnity Amounts"
+  },
+  {
+   "default": "0",
+   "fieldname": "indemnity_before",
+   "fieldtype": "Currency",
+   "label": "Amount Before Cutoff",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "indemnity_after",
+   "fieldtype": "Currency",
+   "label": "Amount After Cutoff",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_4",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "amount",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Total Indemnity Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "payment_section",
+   "fieldtype": "Section Break",
+   "label": "Payment"
+  },
+  {
+   "default": "0",
+   "fieldname": "pay_via_salary_slip",
+   "fieldtype": "Check",
+   "label": "Pay via Salary Slip"
+  },
+  {
+   "depends_on": "eval:doc.pay_via_salary_slip",
+   "fieldname": "salary_component",
+   "fieldtype": "Link",
+   "label": "Salary Component",
+   "options": "Salary Component"
+  },
+  {
+   "depends_on": "eval:doc.pay_via_salary_slip",
+   "fieldname": "payroll_date",
+   "fieldtype": "Date",
+   "label": "Payroll Date"
+  },
+  {
+   "fieldname": "column_break_5",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:!doc.pay_via_salary_slip",
+   "fieldname": "expense_account",
+   "fieldtype": "Link",
+   "label": "Expense Account",
+   "options": "Account"
+  },
+  {
+   "depends_on": "eval:!doc.pay_via_salary_slip",
+   "fieldname": "payable_account",
+   "fieldtype": "Link",
+   "label": "Payable Account",
+   "options": "Account"
+  },
+  {
+   "fieldname": "cost_center",
+   "fieldtype": "Link",
+   "label": "Cost Center",
+   "options": "Cost Center",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.designation",
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ornu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_rmlx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_zfmw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_igak",
+   "fieldtype": "Column Break"
+  }
+ ],
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-15 09:53:35.568868",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Indemnity",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
