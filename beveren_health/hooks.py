@@ -169,8 +169,6 @@ doc_events = {
     "Salary Structure": {
         "before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
     },
-    "Sales Invoice" : {
-        "validate" : "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions"
     "Sales Invoice": {
         "validate": [
             "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
