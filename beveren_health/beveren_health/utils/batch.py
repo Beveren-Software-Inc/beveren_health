@@ -192,9 +192,10 @@ def batch_before_save(doc, method=None):
         return
 
     try:
-        from beveren_health.beveren_health.customize.item_barcode import (
-            generate_ean13_barcode,
+        from beveren_health.beveren_health.utils.barcode import (
+            DEFAULT_BARCODE_TYPE,
             generate_barcode_image,
+            generate_ean13_barcode,
         )
 
         # Check if this batch already has a barcode row on the item
@@ -213,13 +214,12 @@ def batch_before_save(doc, method=None):
             if frappe.db.exists("Item Barcode", {"barcode": new_barcode}):
                 frappe.throw("Could not generate a unique barcode. Please try again.")
 
-        # Generate the barcode image
-        image_path = generate_barcode_image(new_barcode, "EAN13")
+        image_path = generate_barcode_image(new_barcode, DEFAULT_BARCODE_TYPE)
         # Append a new dedicated row for this batch
         item = frappe.get_doc("Item", doc.item)
         item.append("barcodes", {
             "barcode": new_barcode,
-            "barcode_type": "",
+            "barcode_type": DEFAULT_BARCODE_TYPE,
             "custom_image": image_path,
             "custom_batch": doc.name,   # link to this batch
         })
