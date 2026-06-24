@@ -1,0 +1,299 @@
+{
+ "actions": [],
+ "autoname": "HR-VRC-.#####",
+ "creation": "2026-06-21 14:30:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "employee_code",
+  "column_break_app",
+  "application_date",
+  "company",
+  "employment_details_section",
+  "designation",
+  "department",
+  "column_break_emp",
+  "date_of_joining",
+  "date_of_renewal",
+  "declaration_section",
+  "renewal_decision",
+  "renewal_period",
+  "column_break_dec",
+  "employee_signature_date",
+  "hod_section",
+  "hod_recommended",
+  "hod",
+  "hod_name",
+  "column_break_hod",
+  "hod_signature_date",
+  "office_use_section",
+  "ceo_authorized",
+  "authorized_period",
+  "column_break_ceo",
+  "ceo_signature_date",
+  "status_section",
+  "status",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_global_search": 1,
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1,
+   "search_index": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.employee_number",
+   "fieldname": "employee_code",
+   "fieldtype": "Data",
+   "label": "Employee Code/ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_app",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "application_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Application Date",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.company",
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "read_only": 1
+  },
+  {
+   "fieldname": "employment_details_section",
+   "fieldtype": "Section Break",
+   "label": "Employment Details"
+  },
+  {
+   "fetch_from": "employee.designation",
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.department",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_emp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "employee.date_of_joining",
+   "fieldname": "date_of_joining",
+   "fieldtype": "Date",
+   "label": "Date of Joining",
+   "read_only": 1
+  },
+  {
+   "fieldname": "date_of_renewal",
+   "fieldtype": "Date",
+   "label": "Date of Renewal"
+  },
+  {
+   "fieldname": "declaration_section",
+   "fieldtype": "Section Break",
+   "label": "Employee Declaration"
+  },
+  {
+   "default": "Renew",
+   "fieldname": "renewal_decision",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "I would like to",
+   "options": "Renew\nNot Renew",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:doc.renewal_decision == \"Renew\"",
+   "description": "From the date of my existing visa expiry",
+   "fieldname": "renewal_period",
+   "fieldtype": "Select",
+   "label": "Renewal Period",
+   "mandatory_depends_on": "eval:doc.renewal_decision == \"Renew\"",
+   "options": "\n6 Months\n12 Months\n24 Months"
+  },
+  {
+   "fieldname": "column_break_dec",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "employee_signature_date",
+   "fieldtype": "Date",
+   "label": "Employee Signature Date"
+  },
+  {
+   "fieldname": "hod_section",
+   "fieldtype": "Section Break",
+   "label": "HOD's Confirmation"
+  },
+  {
+   "default": "0",
+   "description": "I would like to recommend her/him for the further renewal of visa in the same period as mentioned above.",
+   "fieldname": "hod_recommended",
+   "fieldtype": "Check",
+   "label": "Recommended for Renewal"
+  },
+  {
+   "fieldname": "hod",
+   "fieldtype": "Link",
+   "label": "HOD",
+   "options": "Employee"
+  },
+  {
+   "fetch_from": "hod.employee_name",
+   "fieldname": "hod_name",
+   "fieldtype": "Data",
+   "label": "HOD's Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_hod",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "hod_signature_date",
+   "fieldtype": "Date",
+   "label": "HOD's Signature Date"
+  },
+  {
+   "fieldname": "office_use_section",
+   "fieldtype": "Section Break",
+   "label": "For Office Use - CEO Authorization"
+  },
+  {
+   "default": "0",
+   "description": "I authorize to renew the visa of the above employee for the period mentioned, from the date of expiry.",
+   "fieldname": "ceo_authorized",
+   "fieldtype": "Check",
+   "label": "Authorized by CEO"
+  },
+  {
+   "depends_on": "eval:doc.ceo_authorized",
+   "fieldname": "authorized_period",
+   "fieldtype": "Select",
+   "label": "Authorized Period",
+   "options": "\n6 Months\n12 Months\n24 Months"
+  },
+  {
+   "fieldname": "column_break_ceo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ceo_signature_date",
+   "fieldtype": "Date",
+   "label": "CEO Signature Date"
+  },
+  {
+   "fieldname": "status_section",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nSubmitted\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Employee Visa Renewal Consent",
+   "print_hide": 1,
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-06-21 14:30:00",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Employee Visa Renewal Consent",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
