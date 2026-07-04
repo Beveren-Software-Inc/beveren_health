@@ -146,11 +146,11 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "stock_reconciliation",
    "fieldtype": "Link",
    "label": "Stock Reconciliation",
-   "options": "Stock Reconciliation",
-   "read_only": 1
+   "options": "Stock Reconciliation"
   },
   {
    "fieldname": "column_break_mvis",
@@ -160,7 +160,7 @@
  "icon": "fa fa-upload-alt",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-03 17:04:07.363548",
+ "modified": "2026-06-30 17:57:40.973957",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Stock Scanner",

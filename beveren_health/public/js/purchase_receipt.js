@@ -254,7 +254,6 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx) {
         frappe.model.set_value(cdt, cdn, 'qty', 1);
     }
     if (result.expiry_date) {
-        frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
         frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
     }
     if (result.gtin){
@@ -314,7 +313,6 @@ function handle_create_new_row(frm, result) {
         amount: result.amount || 0,
         batch_no: result.batch_no,
         custom_dispensing_lot: result.serial_no || '',
-        expiry_date: result.expiry_date || '',
         custom_expiry_date: result.expiry_date || '',
         custom_manufacturing_date: result.mfg_date || '',
         custom_gstin: result.gtin || ''
@@ -360,8 +358,7 @@ function handle_move_to_existing(frm, result) {
         }
 
         // Fill dates if not already set
-        if (result.expiry_date && !target_row.expiry_date) {
-            frappe.model.set_value(cdt, cdn, 'expiry_date', result.expiry_date);
+        if (result.expiry_date && !target_row.custom_expiry_date) {
             frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
         }
         if (result.gtin){

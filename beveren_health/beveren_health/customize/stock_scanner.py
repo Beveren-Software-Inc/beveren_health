@@ -219,7 +219,6 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 		if entry.get("manufacturing_date"):
 			item_row["custom_manufacturing_date"] = entry["manufacturing_date"]
 		if entry.get("expiry_date"):
-			item_row["expiry_date"] = entry["expiry_date"]
 			item_row["custom_expiry_date"] = entry["expiry_date"]
 
 		sr.append("items", item_row)
