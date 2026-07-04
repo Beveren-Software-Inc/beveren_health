@@ -42,12 +42,12 @@ def validate_row_has_dispensing_lot(row, row_label=None):
 	if _serials_from_stock_row(row):
 		return
 
-	label = row_label or _("row {0}").format(row.get("idx") or "")
-	frappe.throw(
-		_("Dispensing Lot is required for Item {0} ({1}). Scan or select a lot on the line.").format(
-			row.item_code, label
-		)
-	)
+	# label = row_label or _("row {0}").format(row.get("idx") or "")
+	# frappe.throw(
+	# 	_("Dispensing Lot is required for Item {0} ({1}). Scan or select a lot on the line.").format(
+	# 		row.item_code, label
+	# 	)
+	# )
 
 
 def split_dispensing_lots(value):
@@ -866,15 +866,15 @@ def validate_sales_invoice_dispensing_lots(doc):
 
 		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
 
-		if item_requires_dispensing_lot(row.item_code) and not lot_names:
-			frappe.throw(
-				_("Dispensing Lot is required for Item {0} in row {1}.").format(
-					row.item_code, row.idx
-				)
-			)
+		# if item_requires_dispensing_lot(row.item_code) and not lot_names:
+		# 	frappe.throw(
+		# 		_("Dispensing Lot is required for Item {0} in row {1}.").format(
+		# 			row.item_code, row.idx
+		# 		)
+		# 	)
 
-		if not lot_names:
-			continue
+		# if not lot_names:
+		# 	continue
 
 		multi_pack = _si_row_is_multi_pack_sale(row, lot_names)
 		if multi_pack:

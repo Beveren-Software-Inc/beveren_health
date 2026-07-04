@@ -16,6 +16,9 @@ DOCTYPE_CONFIG = {
         "qty_field": "qty",
         "amount_field": "amount",
         "rate_field": "rate",
+        "gtin_field": "custom_gstin",
+        "expiry_field": "custom_expiry_date",
+        "mfg_field": "custom_manufacturing_date",
         "additional_fields": {}
     },
     "Stock Reconciliation": {
@@ -23,15 +26,11 @@ DOCTYPE_CONFIG = {
         "item_field": "items",
         "qty_field": "qty",
         "amount_field": "amount",
-        "rate_field": "rate",
+        "rate_field": "valuation_rate",
         "gtin_field": "custom_gstin",
-        "expiry_field": "expiry_date",
-        "expiry_field_extra": "custom_expiry_date",
+        "expiry_field": "custom_expiry_date",
         "mfg_field": "custom_manufacturing_date",
-        "additional_fields": {
-            "current_qty": "qty",
-            "current_amount": "amount"
-        }
+        "additional_fields": {},
     },
     "Stock Entry": {
         "child_doctype": "Stock Entry Detail",
@@ -39,6 +38,9 @@ DOCTYPE_CONFIG = {
         "qty_field": "qty",
         "amount_field": "amount",
         "rate_field": "rate",
+        "gtin_field": "custom_gstin",
+        "expiry_field": "custom_expiry_date",
+        "mfg_field": "custom_manufacturing_date",
         "additional_fields": {
             "transfer_qty": "qty",
             "basic_rate": "rate",
@@ -70,7 +72,7 @@ def _lot_field(config):
 def _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=False):
     """Map barcode GTIN / expiry / mfg onto the child row fields for this doctype."""
     gtin_field = config.get("gtin_field") or "custom_gstin"
-    expiry_field = config.get("expiry_field") or "expiry_date"
+    expiry_field = config.get("expiry_field") or "custom_expiry_date"
     expiry_extra = config.get("expiry_field_extra")
     mfg_field = config.get("mfg_field") or "custom_manufacturing_date"
 
@@ -137,9 +139,15 @@ def process_batch_scan(
             return {"success": False, "message": "Cannot determine item for this barcode"}
         
         item = frappe.get_cached_doc("Item", item_code)
+
+        batch_doc = get_or_create_batch(
+            item_code, parsed["batch_no"], parsed.get("expiry_date")
+        )
+        resolved_batch = batch_doc.name if batch_doc else parsed["batch_no"]
+        parsed["batch_no"] = resolved_batch
         
         # Find if this batch already exists anywhere in the document
-        existing_row_info = find_existing_batch_row(doc, config, item_code, parsed['batch_no'])
+        existing_row_info = find_existing_batch_row(doc, config, item_code, resolved_batch)
         
         if existing_row_info:
             current_idx = get_current_row_index(
@@ -188,20 +196,30 @@ def process_batch_scan(
 
 def assign_to_current_row(config, item, parsed, warehouse=None):
     """Case 1 – first scan on an empty row: assign batch + serial."""
-    get_or_create_batch(item.name, parsed['batch_no'], parsed.get('expiry_date'))
-    
+    batch_doc = get_or_create_batch(
+        item.name, parsed["batch_no"], parsed.get("expiry_date")
+    )
+    resolved_batch = batch_doc.name if batch_doc else parsed["batch_no"]
+
     return {
         "success": True,
         "action": "assign_to_current",
         "item_code": item.name,
         "item_name": item.item_name,
         "uom": item.stock_uom,
-        "batch_no": parsed['batch_no'],
-        "serial_no": parsed.get('serial_no'),
+        "batch_no": resolved_batch,
+        "serial_no": parsed.get("serial_no"),
         "expiry_date": parsed.get('expiry_date'),
         "mfg_date": parsed.get('mfg_date'),
         "qty": 1,
-        "rate": frappe.db.get_value("Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate") or 0,
+        "valuation_rate": frappe.db.get_value(
+            "Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate"
+        )
+        or 0,
+        "rate": frappe.db.get_value(
+            "Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate"
+        )
+        or 0,
         "warehouse": warehouse,
         "gtin": parsed.get('gtin'),
     }
@@ -221,13 +239,14 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
     lot_count = len(split_dispensing_lots(dispensing_lots)) if dispensing_lots else 1
     new_qty = lot_count if dispensing_lots else (row.qty or 0) + 1
 
+    rate_field = config.get("rate_field")
     rate = 0
-    if hasattr(row, "rate"):
-        rate = row.rate or 0
+    if rate_field:
+        rate = getattr(row, rate_field, 0) or 0
     elif hasattr(row, "basic_rate"):
         rate = row.basic_rate or 0
-    elif config.get("rate_field"):
-        rate = getattr(row, config["rate_field"], 0) or 0
+    elif hasattr(row, "rate"):
+        rate = row.rate or 0
 
     new_amount = new_qty * rate
 
@@ -239,12 +258,14 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
 
     _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=True)
 
-    if hasattr(row, "rate"):
-        update_values["rate"] = rate
+    if rate_field:
+        update_values[rate_field] = rate
     elif hasattr(row, "basic_rate"):
         update_values["basic_rate"] = rate
+    elif hasattr(row, "rate"):
+        update_values["rate"] = rate
 
-    for field, source_field in config["additional_fields"].items():
+    for field, source_field in config.get("additional_fields", {}).items():
         if source_field == "qty":
             update_values[field] = new_qty
         elif source_field == "amount":
@@ -366,24 +387,27 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
 
 def create_new_row(config, item, parsed, warehouse=None):
     """Case 3 – different batch, current row already used: signal JS to add a new child row."""
-    get_or_create_batch(item.name, parsed['batch_no'], parsed.get('expiry_date'))
+    batch_doc = get_or_create_batch(
+        item.name, parsed["batch_no"], parsed.get("expiry_date")
+    )
+    resolved_batch = batch_doc.name if batch_doc else parsed["batch_no"]
     
     rate = frappe.db.get_value(
         "Item Price",
         {"item_code": item.name, "buying": 1},
         "price_list_rate"
     ) or 0
-    # DEBUG
     return {
         "success": True,
         "action": "create_new_row",
         "item_code": item.name,
         "item_name": item.item_name,
         "uom": item.stock_uom,
+        "valuation_rate": rate,
         "rate": rate,
         "amount": rate,
         "qty": 1,
-        "batch_no": parsed['batch_no'],
+        "batch_no": resolved_batch,
         "serial_no": parsed.get('serial_no'),
         "expiry_date": parsed.get('expiry_date'),
         "mfg_date": parsed.get('mfg_date'),
@@ -668,12 +692,21 @@ def find_existing_batch_row(doc, config, item_code, batch_no):
     """Find if batch already exists in document items."""
     frappe.logger().info(f"Looking for batch '{batch_no}' with item '{item_code}' in {doc.doctype} items")
     items = doc.get(config['item_field'])
+    batch_id = frappe.db.get_value("Batch", batch_no, "batch_id") if batch_no else None
     
     for idx, row in enumerate(items):
         frappe.logger().info(f"Row {idx}: item_code={row.item_code}, batch_no={row.batch_no}")
-        if row.item_code == item_code and row.batch_no == batch_no:
+        if row.item_code != item_code:
+            continue
+        row_batch = row.batch_no or ""
+        if row_batch == batch_no:
             frappe.logger().info(f"Found matching row at index {idx}")
             return {'index': idx, 'row': row}
+        if batch_id and row_batch:
+            row_batch_id = frappe.db.get_value("Batch", row_batch, "batch_id")
+            if row_batch_id == batch_id:
+                frappe.logger().info(f"Found matching row at index {idx} by batch_id")
+                return {'index': idx, 'row': row}
     
     frappe.logger().info("No matching row found")
     return None
