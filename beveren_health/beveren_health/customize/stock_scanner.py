@@ -152,6 +152,7 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 					"batch_no": row.batch_no,
 					"warehouse": warehouse,
 					"lots": list(lots),
+					"qty": flt(row.qty),
 					"valuation_rate": valuation_rate,
 					"stock_uom": row.stock_uom,
 					"gtin": row.get("gtin"),
@@ -163,6 +164,7 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 				for lot in lots:
 					if lot and lot not in entry["lots"]:
 						entry["lots"].append(lot)
+				entry["qty"] = flt(entry.get("qty")) + flt(row.qty)
 				if not entry.get("valuation_rate") and valuation_rate:
 					entry["valuation_rate"] = valuation_rate
 				if not entry.get("gtin") and row.get("gtin"):
@@ -196,7 +198,9 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 		)
 
 	for key, entry in merged.items():
-		qty = len(entry["lots"]) if entry["lots"] else 1
+		qty = flt(entry.get("qty"))
+		if not qty:
+			qty = len(entry["lots"]) if entry["lots"] else 1
 		valuation_rate = flt(entry.get("valuation_rate"))
 		amount = qty * valuation_rate
 		dispensing_lot = "\n".join(entry["lots"])

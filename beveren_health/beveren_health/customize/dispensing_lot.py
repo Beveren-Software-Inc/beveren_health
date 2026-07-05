@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Beveren Software and contributors
 # For license information, please see license.txt
 
+import math
+
 import frappe
 from frappe import _
 from frappe.utils import cint, flt
@@ -85,6 +87,58 @@ def get_pack_size_and_uom(item_code):
 		return flt(1 / cf), row.uom
 
 	return 1, stock_uom
+
+
+def round_dispensing_qty(qty):
+	"""
+	Round a dispensing-UOM quantity for lot initial/remaining qty.
+
+	Fractional part >= 0.80 rounds up (e.g. 9.99 → 10); below 0.80 rounds down.
+	"""
+	qty = flt(qty)
+	if qty <= 0:
+		return 0
+
+	whole = math.floor(qty)
+	frac = flt(qty - whole, 6)
+	if frac >= 0.80:
+		return whole + 1
+	return whole
+
+
+def compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size):
+	"""
+	Distribute a stock-UOM line qty across dispensing lots.
+
+	Each serial before the last represents one full pack; the last serial
+	gets any fractional remainder (e.g. 1.86 PACK with 2 lots → 1 + 0.86).
+	Quantities are returned in dispensing UOM (e.g. UNIT).
+	"""
+	n = len(serials or [])
+	if not n:
+		return []
+
+	pack_size = flt(pack_size) or 1
+	total = flt(row_stock_qty)
+
+	if n == 1:
+		return [round_dispensing_qty(total * pack_size)]
+
+	quantities = []
+	remaining = total
+
+	for i in range(n):
+		if i == n - 1:
+			lot_stock_qty = remaining
+		elif remaining >= 1:
+			lot_stock_qty = 1
+		else:
+			lot_stock_qty = remaining
+
+		quantities.append(round_dispensing_qty(lot_stock_qty * pack_size))
+		remaining = flt(remaining - lot_stock_qty, 6)
+
+	return quantities
 
 
 def _get_dispensing_uom_from_item(item):
@@ -347,14 +401,16 @@ def create_dispensing_lots_on_submit(doc, method=None):
 		)
 
 		posting_date = doc.get("posting_date") or frappe.utils.today()
+		row_stock_qty = flt(row.get("qty")) or len(serials)
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size)
 
-		for serial in serials:
+		for serial, lot_qty in zip(serials, lot_quantities):
 			_create_dispensing_lot_if_missing(
 				item=row.item_code,
 				batch_no=row.batch_no,
 				serial_no=serial,
 				warehouse=warehouse,
-				pack_size=pack_size,
+				lot_qty=lot_qty,
 				dispensing_uom=dispensing_uom,
 				gtin=gtin,
 				reference_doctype=doc.doctype,
@@ -402,7 +458,7 @@ def _restore_dispensing_lot_from_stock_doc(
 	item,
 	batch_no,
 	warehouse,
-	pack_size,
+	lot_qty,
 	dispensing_uom,
 	gtin,
 	reference_doctype,
@@ -417,14 +473,14 @@ def _restore_dispensing_lot_from_stock_doc(
 			)
 		)
 
-	pack_size = flt(pack_size) or flt(lot.initial_qty) or 1
+	lot_qty = flt(lot_qty) or flt(lot.initial_qty) or 1
 
 	lot.item = item
 	lot.batch_no = batch_no
 	if warehouse:
 		lot.warehouse = warehouse
 	lot.uom = dispensing_uom or lot.uom
-	lot.initial_qty = pack_size
+	lot.initial_qty = lot_qty
 	if gtin:
 		lot.gtin = gtin
 	if serial_no and not lot.serial_no:
@@ -433,7 +489,7 @@ def _restore_dispensing_lot_from_stock_doc(
 	lot.source_doctype = reference_doctype
 	lot.source_document = reference_name
 
-	in_qty = pack_size - flt(lot.remaining_qty)
+	in_qty = lot_qty - flt(lot.remaining_qty)
 
 	if in_qty > 0 and not _lot_has_reference_transaction(
 		lot, reference_doctype, reference_name, "In"
@@ -459,7 +515,7 @@ def _create_dispensing_lot_if_missing(
 	batch_no,
 	serial_no,
 	warehouse,
-	pack_size,
+	lot_qty,
 	dispensing_uom,
 	gtin=None,
 	reference_doctype=None,
@@ -467,6 +523,7 @@ def _create_dispensing_lot_if_missing(
 	posting_date=None,
 ):
 	posting_date = posting_date or frappe.utils.today()
+	lot_qty = flt(lot_qty) or 1
 	lot_name = _get_lot_name_by_serial(serial_no)
 
 	if lot_name:
@@ -481,7 +538,7 @@ def _create_dispensing_lot_if_missing(
 				item,
 				batch_no,
 				warehouse,
-				pack_size,
+				lot_qty,
 				dispensing_uom,
 				gtin,
 				reference_doctype,
@@ -508,8 +565,8 @@ def _create_dispensing_lot_if_missing(
 			"serial_no": serial_no,
 			"gtin": gtin,
 			"uom": dispensing_uom,
-			"initial_qty": pack_size,
-			"remaining_qty": pack_size,
+			"initial_qty": lot_qty,
+			"remaining_qty": lot_qty,
 			"status": "Active",
 			"source_doctype": reference_doctype,
 			"source_document": reference_name,
@@ -517,6 +574,172 @@ def _create_dispensing_lot_if_missing(
 	)
 	lot.insert(ignore_permissions=True)
 	return lot.name
+
+
+@frappe.whitelist()
+def get_dispensing_lots_for_stock_document(source_doctype, source_document):
+	"""Return dispensing lots created from a stock document (for review / amendment)."""
+	if not source_doctype or not source_document:
+		return []
+
+	return frappe.get_all(
+		"Dispensing Lot",
+		filters={
+			"source_doctype": source_doctype,
+			"source_document": source_document,
+		},
+		fields=[
+			"name",
+			"item",
+			"item_name",
+			"serial_no",
+			"batch_no",
+			"initial_qty",
+			"remaining_qty",
+			"uom",
+			"status",
+		],
+		order_by="item asc, serial_no asc",
+	)
+
+
+def build_expected_lot_quantities_for_stock_document(doc):
+	"""Map Dispensing Lot name → expected qty (dispensing UOM) from document lines."""
+	config = STOCK_DOC_CONFIG.get(doc.doctype)
+	if not config:
+		return {}
+
+	expected = {}
+
+	for row in doc.get(config["items_field"]) or []:
+		serials = _serials_from_stock_row(row)
+		if not serials or not row.item_code:
+			continue
+
+		pack_size, _dispensing_uom = get_pack_size_and_uom(row.item_code)
+		row_stock_qty = flt(row.get("qty")) or len(serials)
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size)
+
+		for serial, lot_qty in zip(serials, lot_quantities):
+			lot_name = _get_lot_name_by_serial(serial)
+			if lot_name:
+				expected[lot_name] = lot_qty
+
+	return expected
+
+
+def _lot_safe_for_qty_correction(lot):
+	"""Only correct lots that were never consumed (wrong qty from legacy submit logic)."""
+	if lot.status != "Active":
+		return False
+
+	if flt(lot.remaining_qty) != flt(lot.initial_qty):
+		return False
+
+	for row in lot.transactions:
+		if row.transaction_type == "Out":
+			return False
+
+	return True
+
+
+def _preview_dispensing_lot_qty_corrections(doc):
+	expected = build_expected_lot_quantities_for_stock_document(doc)
+	fixable = []
+	skipped = []
+
+	for lot_name, expected_qty in expected.items():
+		if not frappe.db.exists("Dispensing Lot", lot_name):
+			continue
+
+		lot = frappe.get_doc("Dispensing Lot", lot_name)
+		if lot.source_doctype != doc.doctype or lot.source_document != doc.name:
+			skipped.append(
+				{
+					"name": lot.name,
+					"serial_no": lot.serial_no,
+					"reason": _("Linked to another document"),
+				}
+			)
+			continue
+
+		current_qty = flt(lot.initial_qty)
+		if flt(expected_qty, 3) == flt(current_qty, 3):
+			continue
+
+		if not _lot_safe_for_qty_correction(lot):
+			skipped.append(
+				{
+					"name": lot.name,
+					"serial_no": lot.serial_no,
+					"reason": _("Already used or not Active"),
+				}
+			)
+			continue
+
+		fixable.append(
+			{
+				"name": lot.name,
+				"item": lot.item,
+				"serial_no": lot.serial_no,
+				"current_qty": current_qty,
+				"expected_qty": flt(expected_qty, 3),
+				"uom": lot.uom,
+			}
+		)
+
+	return {"fixable": fixable, "skipped": skipped}
+
+
+@frappe.whitelist()
+def preview_dispensing_lot_qty_corrections(source_doctype, source_document):
+	"""List dispensing lots whose quantities can be auto-corrected from the stock document."""
+	if source_doctype != "Stock Reconciliation":
+		frappe.throw(_("Quantity correction is only supported for Stock Reconciliation."))
+
+	doc = frappe.get_doc(source_doctype, source_document)
+	if doc.docstatus != 1:
+		frappe.throw(_("Submit the document before correcting dispensing lot quantities."))
+
+	return _preview_dispensing_lot_qty_corrections(doc)
+
+
+@frappe.whitelist()
+def correct_dispensing_lot_quantities(source_doctype, source_document):
+	"""One-time fix: set initial/remaining qty from stock document line totals."""
+	if source_doctype != "Stock Reconciliation":
+		frappe.throw(_("Quantity correction is only supported for Stock Reconciliation."))
+
+	doc = frappe.get_doc(source_doctype, source_document)
+	if doc.docstatus != 1:
+		frappe.throw(_("Submit the document before correcting dispensing lot quantities."))
+
+	preview = _preview_dispensing_lot_qty_corrections(doc)
+	corrected = []
+
+	for entry in preview["fixable"]:
+		lot = frappe.get_doc("Dispensing Lot", entry["name"])
+		old_qty = flt(lot.initial_qty)
+		new_qty = flt(entry["expected_qty"], 3)
+
+		lot.initial_qty = new_qty
+		lot.remaining_qty = new_qty
+		lot.save(ignore_permissions=True)
+
+		corrected.append(
+			{
+				"name": lot.name,
+				"serial_no": lot.serial_no,
+				"old_qty": old_qty,
+				"new_qty": new_qty,
+				"uom": lot.uom,
+			}
+		)
+
+	return {
+		"corrected": corrected,
+		"skipped": preview["skipped"],
+	}
 
 
 def _lot_has_dispensing_uom_unit_sales(lot):
