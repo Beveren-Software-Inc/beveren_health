@@ -37,7 +37,10 @@ function ss_sync_qty_from_lots(frm, cdt, cdn) {
 	if (!row) {
 		return;
 	}
-	const qty = ss_count_lots(row.serial_no) || flt(row.qty) || 0;
+	const lot_count = ss_count_lots(row.serial_no);
+	const row_qty = flt(row.qty);
+	// One partial pack can have fractional qty (e.g. 0.655); only count lots when qty unset or multiple packs.
+	const qty = lot_count > 1 ? lot_count : (row_qty > 0 ? row_qty : lot_count || 0);
 	const rate = flt(row.valuation_rate);
 	frappe.model.set_value(cdt, cdn, "qty", qty);
 	frappe.model.set_value(cdt, cdn, "current_qty", qty);

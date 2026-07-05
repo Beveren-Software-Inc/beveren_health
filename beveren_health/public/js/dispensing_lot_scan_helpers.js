@@ -58,6 +58,7 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn,
 	}
 
 	let qty = beveren_health.dispensing_lot_scan.count_lots(row.custom_dispensing_lot);
+	const row_qty = flt(row.qty);
 	const rate = flt(row.rate);
 	const basic_rate = flt(row.basic_rate);
 
@@ -68,6 +69,9 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn,
 		frm.doc.purpose === "Material Transfer"
 	) {
 		qty = qty > 0 ? 1 : 0;
+	} else if (qty <= 1 && row_qty > 0) {
+		// Single partial pack — keep fractional qty from the row
+		qty = row_qty;
 	}
 
 	if (cdt === "Stock Reconciliation Item") {

@@ -36,6 +36,14 @@ frappe.ui.form.on('Stock Reconciliation', {
 			frm.add_custom_button(__("Batch Label Print"), function () {
 				show_batch_range_dialog(frm);
 			}, __("Actions"));
+
+			if (frm.doc.docstatus === 1) {
+				frm.add_custom_button(__("Dispensing Lots"), function () {
+					show_dispensing_lots_for_reconciliation(frm);
+				}, __("Actions"));
+
+				setup_dispensing_lot_qty_correction_button(frm);
+			}
 		}
 	}
 
@@ -560,6 +568,187 @@ function scroll_to_row(frm, row_idx) {
             }
         }
     }, 200);
+}
+
+
+// ─── Dispensing lots linked to this reconciliation ─────────────────────────────
+
+function setup_dispensing_lot_qty_correction_button(frm) {
+	frappe.call({
+		method:
+			"beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
+		args: {
+			source_doctype: frm.doc.doctype,
+			source_document: frm.doc.name,
+		},
+		callback(r) {
+			const fixable = (r.message && r.message.fixable) || [];
+			if (!fixable.length) {
+				return;
+			}
+
+			frm.add_custom_button(__("Correct Lot Quantities"), function () {
+				run_dispensing_lot_qty_correction(frm);
+			}, __("Actions"));
+		},
+	});
+}
+
+function run_dispensing_lot_qty_correction(frm) {
+	frappe.call({
+		method:
+			"beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
+		args: {
+			source_doctype: frm.doc.doctype,
+			source_document: frm.doc.name,
+		},
+		callback(r) {
+			const fixable = (r.message && r.message.fixable) || [];
+			if (!fixable.length) {
+				frappe.msgprint(__("All dispensing lot quantities are already correct."));
+				return;
+			}
+
+			const rows = fixable
+				.map((lot) => {
+					return `<tr>
+						<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.serial_no || lot.name)}</td>
+						<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
+						<td style="padding:4px 8px; text-align:right;">${flt(lot.current_qty)} → ${flt(lot.expected_qty)} ${frappe.utils.escape_html(lot.uom || "")}</td>
+					</tr>`;
+				})
+				.join("");
+
+			frappe.confirm(
+				`<p>${__(
+					"Update {0} dispensing lot(s) to match quantities on this Stock Reconciliation?",
+					[fixable.length]
+				)}</p>
+				<table class="table table-bordered" style="font-size:12px; margin-top:8px;">
+					<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th></tr></thead>
+					<tbody>${rows}</tbody>
+				</table>
+				<p class="text-muted" style="margin-top:8px;">${__(
+					"Only unused Active lots are updated. Lots that were already sold or partially used are skipped."
+				)}</p>`,
+				() => {
+					frappe.call({
+						method:
+							"beveren_health.beveren_health.customize.dispensing_lot.correct_dispensing_lot_quantities",
+						args: {
+							source_doctype: frm.doc.doctype,
+							source_document: frm.doc.name,
+						},
+						freeze: true,
+						freeze_message: __("Correcting dispensing lot quantities..."),
+						callback(res) {
+							const corrected = (res.message && res.message.corrected) || [];
+							const skipped = (res.message && res.message.skipped) || [];
+
+							if (!corrected.length) {
+								frappe.msgprint(__("No dispensing lots were updated."));
+								return;
+							}
+
+							let message = __("Updated {0} dispensing lot(s).", [corrected.length]);
+							if (skipped.length) {
+								message +=
+									"<br><br>" +
+									__("Skipped {0} lot(s) (already used or linked elsewhere).", [
+										skipped.length,
+									]);
+							}
+
+							frappe.msgprint({
+								title: __("Correction complete"),
+								indicator: "green",
+								message: message,
+							});
+
+							frm.refresh();
+						},
+					});
+				}
+			);
+		},
+	});
+}
+
+function show_dispensing_lots_for_reconciliation(frm) {
+	frappe.call({
+		method:
+			"beveren_health.beveren_health.customize.dispensing_lot.get_dispensing_lots_for_stock_document",
+		args: {
+			source_doctype: frm.doc.doctype,
+			source_document: frm.doc.name,
+		},
+		callback(r) {
+			const lots = r.message || [];
+			if (!lots.length) {
+				frappe.msgprint(__("No dispensing lots were created from this Stock Reconciliation."));
+				return;
+			}
+
+			const rows = lots
+				.map((lot) => {
+					const qty_label = `${flt(lot.remaining_qty)} / ${flt(lot.initial_qty)} ${lot.uom || ""}`.trim();
+					return `
+						<tr>
+							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
+							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.serial_no || lot.name)}</td>
+							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.batch_no || "")}</td>
+							<td style="padding:6px 8px; text-align:right;">${frappe.utils.escape_html(qty_label)}</td>
+							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.status || "")}</td>
+							<td style="padding:6px 8px; text-align:center;">
+								<button type="button" class="btn btn-xs btn-default open-dl-lot" data-lot="${frappe.utils.escape_html(lot.name)}">
+									${__("Open")}
+								</button>
+							</td>
+						</tr>
+					`;
+				})
+				.join("");
+
+			const d = new frappe.ui.Dialog({
+				title: __("Dispensing Lots"),
+				size: "large",
+				fields: [
+					{
+						fieldtype: "HTML",
+						options: `
+							<p class="text-muted">${__(
+								"Lots created when this document was submitted. Open a lot to amend quantities if needed."
+							)}</p>
+							<div style="overflow-x:auto;">
+								<table class="table table-bordered" style="margin:0; font-size:12px;">
+									<thead>
+										<tr>
+											<th>${__("Item")}</th>
+											<th>${__("Serial")}</th>
+											<th>${__("Batch")}</th>
+											<th style="text-align:right;">${__("Remaining / Initial")}</th>
+											<th>${__("Status")}</th>
+											<th style="text-align:center;">${__("Action")}</th>
+										</tr>
+									</thead>
+									<tbody>${rows}</tbody>
+								</table>
+							</div>
+						`,
+					},
+				],
+			});
+
+			d.show();
+
+			d.$wrapper.on("click", ".open-dl-lot", function () {
+				const lot_name = $(this).attr("data-lot");
+				if (lot_name) {
+					frappe.set_route("Form", "Dispensing Lot", lot_name);
+				}
+			});
+		},
+	});
 }
 
 
