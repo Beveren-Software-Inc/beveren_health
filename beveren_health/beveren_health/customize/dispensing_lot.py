@@ -8,6 +8,7 @@ from frappe import _
 from frappe.utils import cint, flt
 
 DISPENSING_LOT_FIELD = "custom_dispensing_lot"
+DISPENSING_UOM = "UNIT"
 
 STOCK_DOC_CONFIG = {
 	"Purchase Receipt": {
@@ -64,49 +65,80 @@ def split_dispensing_lots(value):
 	return [value.strip()] if value.strip() else []
 
 
+def _item_has_unit_uom(item):
+	for row in item.get("uoms") or []:
+		if row.uom == DISPENSING_UOM:
+			return True
+	return False
+
+
+def _get_unit_conversion_factor(item):
+	"""UNIT → stock-UOM factor; 1 when the item has no UNIT row."""
+	for row in item.get("uoms") or []:
+		if row.uom == DISPENSING_UOM:
+			return flt(row.conversion_factor) or 1.0
+	return 1.0
+
+
 def get_pack_size_and_uom(item_code):
 	"""Return (pack_size in dispensing UOM, dispensing_uom) for one physical pack."""
 	item = frappe.get_cached_doc("Item", item_code)
-	pack_size = flt(item.get("custom_pack_size"))
-
-	if pack_size:
-		dispensing_uom = _get_dispensing_uom_from_item(item)
-		return pack_size, dispensing_uom
-
 	stock_uom = item.stock_uom
-	for row in item.get("uoms") or []:
-		if row.uom == stock_uom:
-			continue
 
-		cf = flt(row.conversion_factor)
-		if not cf:
-			continue
-
+	if _item_has_unit_uom(item):
+		cf = _get_unit_conversion_factor(item)
 		if cf >= 1:
-			return cf, row.uom
-		return flt(1 / cf), row.uom
+			return cf, DISPENSING_UOM
+		return flt(1 / cf, 6), DISPENSING_UOM
 
+	# No UNIT: dispensing qty is the stock qty itself (no conversion / no pack-size default).
 	return 1, stock_uom
+
+
+def stock_qty_to_dispensing_qty(stock_qty, item_code):
+	"""Convert stock-UOM qty to dispensing-UOM qty."""
+	item = frappe.get_cached_doc("Item", item_code)
+
+	if not _item_has_unit_uom(item):
+		return flt(stock_qty, 6)
+
+	cf = _get_unit_conversion_factor(item)
+	if cf == 1:
+		return flt(stock_qty, 6)
+	return flt(flt(stock_qty) / cf, 6)
 
 
 def round_dispensing_qty(qty):
 	"""
-	Round a dispensing-UOM quantity for lot initial/remaining qty.
+	Round a UNIT quantity for dispensing lots.
 
 	Fractional part >= 0.80 rounds up (e.g. 9.99 → 10); below 0.80 rounds down.
+	Only used when the item has a UNIT UOM row.
 	"""
-	qty = flt(qty)
+	qty = flt(qty, 6)
 	if qty <= 0:
 		return 0
 
-	whole = math.floor(qty)
-	frac = flt(qty - whole, 6)
+	whole = math.floor(qty + 1e-9)
+	frac = round(qty - whole, 2)
 	if frac >= 0.80:
 		return whole + 1
 	return whole
 
 
-def compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size):
+def finalize_dispensing_lot_qty(qty, item_code):
+	"""Apply UNIT rounding rules, or keep stock qty as-is when the item has no UNIT."""
+	qty = flt(qty, 6)
+	if qty <= 0:
+		return 0
+
+	item = frappe.get_cached_doc("Item", item_code)
+	if _item_has_unit_uom(item):
+		return round_dispensing_qty(qty)
+	return qty
+
+
+def compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size=None, item_code=None):
 	"""
 	Distribute a stock-UOM line qty across dispensing lots.
 
@@ -118,11 +150,22 @@ def compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size):
 	if not n:
 		return []
 
-	pack_size = flt(pack_size) or 1
 	total = flt(row_stock_qty)
 
+	def to_dispensing_qty(pack_qty):
+		if item_code:
+			return stock_qty_to_dispensing_qty(pack_qty, item_code)
+		pack_size_val = flt(pack_size) or 1
+		return flt(pack_qty) * pack_size_val
+
+	def finalize(pack_qty):
+		raw = to_dispensing_qty(pack_qty)
+		if item_code:
+			return finalize_dispensing_lot_qty(raw, item_code)
+		return round_dispensing_qty(raw)
+
 	if n == 1:
-		return [round_dispensing_qty(total * pack_size)]
+		return [finalize(total)]
 
 	quantities = []
 	remaining = total
@@ -135,18 +178,20 @@ def compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size):
 		else:
 			lot_stock_qty = remaining
 
-		quantities.append(round_dispensing_qty(lot_stock_qty * pack_size))
+		quantities.append(finalize(lot_stock_qty))
 		remaining = flt(remaining - lot_stock_qty, 6)
 
 	return quantities
 
 
+def compute_dispensing_qty_per_serial_for_item(row_stock_qty, serials, item_code):
+	return compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=item_code)
+
+
 def _get_dispensing_uom_from_item(item):
-	stock_uom = item.stock_uom
-	for row in item.get("uoms") or []:
-		if row.uom and row.uom != stock_uom:
-			return row.uom
-	return stock_uom
+	if _item_has_unit_uom(item):
+		return DISPENSING_UOM
+	return item.stock_uom
 
 
 def _is_material_transfer_stock_entry(doc):
@@ -395,7 +440,7 @@ def create_dispensing_lots_on_submit(doc, method=None):
 				_transfer_dispensing_lot_on_material_transfer(doc, row, serial)
 			continue
 
-		pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
+		_pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
 		warehouse = get_warehouse_for_row(doc, row, config)
 
 		gtin = row.get("custom_gstin") or frappe.db.get_value(
@@ -404,7 +449,9 @@ def create_dispensing_lots_on_submit(doc, method=None):
 
 		posting_date = doc.get("posting_date") or frappe.utils.today()
 		row_stock_qty = flt(row.get("qty")) or len(serials)
-		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size)
+		lot_quantities = compute_dispensing_qty_per_serial(
+			row_stock_qty, serials, item_code=row.item_code
+		)
 
 		for serial, lot_qty in zip(serials, lot_quantities):
 			_create_dispensing_lot_if_missing(
@@ -641,28 +688,79 @@ def get_dispensing_lots_for_stock_document(source_doctype, source_document):
 
 
 def build_expected_lot_quantities_for_stock_document(doc):
-	"""Map Dispensing Lot name → expected qty (dispensing UOM) from document lines."""
+	"""Build expected dispensing qty maps from stock document lines."""
 	config = STOCK_DOC_CONFIG.get(doc.doctype)
 	if not config:
-		return {}
+		return {"by_lot": {}, "by_serial": {}}
 
-	expected = {}
+	by_lot = {}
+	by_serial = {}
 
 	for row in doc.get(config["items_field"]) or []:
 		serials = _serials_from_stock_row(row)
 		if not serials or not row.item_code:
 			continue
 
-		pack_size, _dispensing_uom = get_pack_size_and_uom(row.item_code)
 		row_stock_qty = flt(row.get("qty")) or len(serials)
-		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, pack_size)
+		lot_quantities = compute_dispensing_qty_per_serial(
+			row_stock_qty, serials, item_code=row.item_code
+		)
 
 		for serial, lot_qty in zip(serials, lot_quantities):
+			by_serial[serial] = lot_qty
 			lot_name = _get_lot_name_by_serial(serial)
 			if lot_name:
-				expected[lot_name] = lot_qty
+				by_lot[lot_name] = lot_qty
 
-	return expected
+	return {"by_lot": by_lot, "by_serial": by_serial}
+
+
+def _expected_qty_for_lot(lot, expected_maps, doc):
+	by_lot = expected_maps.get("by_lot") or {}
+	by_serial = expected_maps.get("by_serial") or {}
+
+	if lot.name in by_lot:
+		return by_lot[lot.name]
+
+	for token in (lot.serial_no, lot.name):
+		if token and token in by_serial:
+			return by_serial[token]
+
+	config = STOCK_DOC_CONFIG.get(doc.doctype)
+	if not config:
+		return None
+
+	lot_tokens = {t for t in (lot.serial_no, lot.name) if t}
+
+	for row in doc.get(config["items_field"]) or []:
+		serials = _serials_from_stock_row(row)
+		if not serials:
+			continue
+
+		matched = False
+		for serial in serials:
+			if serial in lot_tokens or _get_lot_name_by_serial(serial) == lot.name:
+				matched = True
+				break
+
+		if not matched:
+			continue
+
+		row_stock_qty = flt(row.get("qty")) or len(serials)
+		lot_quantities = compute_dispensing_qty_per_serial(
+			row_stock_qty, serials, item_code=row.item_code
+		)
+		for serial, lot_qty in zip(serials, lot_quantities):
+			if serial in lot_tokens or _get_lot_name_by_serial(serial) == lot.name:
+				return lot_qty
+
+	return None
+
+
+def _qty_matches_expected(current_qty, expected_qty, item_code):
+	item = frappe.get_cached_doc("Item", item_code)
+	precision = 3 if _item_has_unit_uom(item) else 6
+	return flt(expected_qty, precision) == flt(current_qty, precision)
 
 
 def _lot_safe_for_qty_correction(lot):
@@ -680,28 +778,73 @@ def _lot_safe_for_qty_correction(lot):
 	return True
 
 
+def _collect_lot_names_for_stock_correction(doc):
+	"""All dispensing lots tied to this document by source link or row serial."""
+	names = set()
+
+	for ref in frappe.get_all(
+		"Dispensing Lot",
+		filters={"source_doctype": doc.doctype, "source_document": doc.name},
+		fields=["name"],
+	):
+		names.add(ref.name)
+
+	config = STOCK_DOC_CONFIG.get(doc.doctype)
+	if not config:
+		return sorted(names)
+
+	for row in doc.get(config["items_field"]) or []:
+		if not row.item_code:
+			continue
+		for serial in _serials_from_stock_row(row):
+			lot_name = _get_lot_name_by_serial(serial)
+			if lot_name:
+				names.add(lot_name)
+			elif frappe.db.exists("Dispensing Lot", serial):
+				names.add(serial)
+
+	return sorted(names)
+
+
 def _preview_dispensing_lot_qty_corrections(doc):
-	expected = build_expected_lot_quantities_for_stock_document(doc)
+	expected_maps = build_expected_lot_quantities_for_stock_document(doc)
 	fixable = []
 	skipped = []
+	unchanged = []
 
-	for lot_name, expected_qty in expected.items():
+	for lot_name in _collect_lot_names_for_stock_correction(doc):
 		if not frappe.db.exists("Dispensing Lot", lot_name):
 			continue
 
 		lot = frappe.get_doc("Dispensing Lot", lot_name)
-		if lot.source_doctype != doc.doctype or lot.source_document != doc.name:
+		expected_qty = _expected_qty_for_lot(lot, expected_maps, doc)
+
+		if expected_qty is None:
 			skipped.append(
 				{
 					"name": lot.name,
 					"serial_no": lot.serial_no,
-					"reason": _("Linked to another document"),
+					"item": lot.item,
+					"reason": _("No matching line on this document"),
 				}
 			)
 			continue
 
 		current_qty = flt(lot.initial_qty)
-		if flt(expected_qty, 3) == flt(current_qty, 3):
+		item = frappe.get_cached_doc("Item", lot.item)
+		precision = 3 if _item_has_unit_uom(item) else 6
+
+		if _qty_matches_expected(current_qty, expected_qty, lot.item):
+			unchanged.append(
+				{
+					"name": lot.name,
+					"serial_no": lot.serial_no,
+					"item": lot.item,
+					"current_qty": flt(current_qty, precision),
+					"expected_qty": flt(expected_qty, precision),
+					"uom": lot.uom,
+				}
+			)
 			continue
 
 		if not _lot_safe_for_qty_correction(lot):
@@ -709,6 +852,10 @@ def _preview_dispensing_lot_qty_corrections(doc):
 				{
 					"name": lot.name,
 					"serial_no": lot.serial_no,
+					"item": lot.item,
+					"current_qty": flt(current_qty, precision),
+					"expected_qty": flt(expected_qty, precision),
+					"uom": lot.uom,
 					"reason": _("Already used or not Active"),
 				}
 			)
@@ -719,13 +866,13 @@ def _preview_dispensing_lot_qty_corrections(doc):
 				"name": lot.name,
 				"item": lot.item,
 				"serial_no": lot.serial_no,
-				"current_qty": current_qty,
-				"expected_qty": flt(expected_qty, 3),
+				"current_qty": flt(current_qty, precision),
+				"expected_qty": flt(expected_qty, precision),
 				"uom": lot.uom,
 			}
 		)
 
-	return {"fixable": fixable, "skipped": skipped}
+	return {"fixable": fixable, "skipped": skipped, "unchanged": unchanged}
 
 
 @frappe.whitelist()
@@ -757,10 +904,14 @@ def correct_dispensing_lot_quantities(source_doctype, source_document):
 	for entry in preview["fixable"]:
 		lot = frappe.get_doc("Dispensing Lot", entry["name"])
 		old_qty = flt(lot.initial_qty)
-		new_qty = flt(entry["expected_qty"], 3)
+		item = frappe.get_cached_doc("Item", lot.item)
+		precision = 3 if _item_has_unit_uom(item) else 6
+		new_qty = flt(entry["expected_qty"], precision)
 
 		lot.initial_qty = new_qty
 		lot.remaining_qty = new_qty
+		lot.source_doctype = source_doctype
+		lot.source_document = source_document
 		lot.save(ignore_permissions=True)
 
 		corrected.append(
@@ -776,6 +927,7 @@ def correct_dispensing_lot_quantities(source_doctype, source_document):
 	return {
 		"corrected": corrected,
 		"skipped": preview["skipped"],
+		"unchanged": preview.get("unchanged", []),
 	}
 
 

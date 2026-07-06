@@ -52,9 +52,21 @@ class DispensingLot(Document):
 		self.remaining_qty = flt(self.initial_qty) - issued + returned
 
 		if self.remaining_qty < 0:
+			lot_label = self.name or _("New Dispensing Lot")
+			serial_or_name = self.serial_no or self.name or _("N/A")
 			frappe.throw(
-				_("Remaining qty cannot be negative. Issued {0}, returned {1}, initial {2}.").format(
-					issued, returned, self.initial_qty
+				_(
+					"Dispensing Lot {0} failed validation for item {1} "
+					"(serial/lot: {2}, batch: {3}). Remaining qty cannot be negative. "
+					"Issued {4}, returned {5}, initial {6}."
+				).format(
+					lot_label,
+					self.item or _("N/A"),
+					serial_or_name,
+					self.batch_no or _("N/A"),
+					issued,
+					returned,
+					self.initial_qty,
 				)
 			)
 
