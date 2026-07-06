@@ -388,6 +388,8 @@ def create_dispensing_lots_on_submit(doc, method=None):
 		if not serials or not row.item_code or not row.batch_no:
 			continue
 
+		_validate_stock_row_batch_item(row)
+
 		if _is_material_transfer_stock_entry(doc):
 			for serial in serials:
 				_transfer_dispensing_lot_on_material_transfer(doc, row, serial)
@@ -416,7 +418,38 @@ def create_dispensing_lots_on_submit(doc, method=None):
 				reference_doctype=doc.doctype,
 				reference_name=doc.name,
 				posting_date=posting_date,
+				row_idx=row.idx,
 			)
+
+
+def _validate_stock_row_batch_item(row):
+	"""Batch master must match the item on the stock document line."""
+	batch_item = frappe.db.get_value("Batch", row.batch_no, "item")
+	if batch_item and batch_item != row.item_code:
+		frappe.throw(
+			_("Row {0}: Batch {1} belongs to item {2}, not {3}.").format(
+				row.idx, row.batch_no, batch_item, row.item_code
+			)
+		)
+
+
+def _ensure_lot_item_matches_stock_row(lot, item, serial_no, row_idx=None):
+	"""Reject or correct when an existing lot serial is tied to a different item."""
+	if not lot.item or lot.item == item:
+		return
+
+	row_ref = _("row {0}").format(row_idx) if row_idx else _("this document line")
+
+	if _lot_is_partially_consumed(lot) or _lot_has_sales_invoice_out(lot):
+		frappe.throw(
+			_(
+				"{0}: Dispensing Lot serial {1} is already registered for item {2}, "
+				"not {3}. This conflicts with existing lot {4}. "
+				"Remove the serial from the line or correct the Dispensing Lot first."
+			).format(row_ref, serial_no, lot.item, item, lot.name)
+		)
+
+	lot.item = item
 
 
 def _get_lot_name_by_serial(serial_no):
@@ -521,6 +554,7 @@ def _create_dispensing_lot_if_missing(
 	reference_doctype=None,
 	reference_name=None,
 	posting_date=None,
+	row_idx=None,
 ):
 	posting_date = posting_date or frappe.utils.today()
 	lot_qty = flt(lot_qty) or 1
@@ -547,11 +581,14 @@ def _create_dispensing_lot_if_missing(
 			)
 
 		# Already active — refresh source link to this document
+		_ensure_lot_item_matches_stock_row(lot, item, serial_no, row_idx=row_idx)
 		lot.source_doctype = reference_doctype
 		lot.source_document = reference_name
 		if warehouse:
 			lot.warehouse = warehouse
 		lot.batch_no = batch_no
+		if dispensing_uom:
+			lot.uom = dispensing_uom
 		lot.save(ignore_permissions=True)
 		return lot.name
 
