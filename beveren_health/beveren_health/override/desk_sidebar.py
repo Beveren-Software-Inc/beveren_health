@@ -27,9 +27,6 @@ RESTRICTED_ROLES = frozenset(
         "Reception",
         "Laboratory User",
         "LabTest Approver",
-        "Pharmacy",
-        "Phamarcist",  # (misspelled in the system; kept as-is on purpose)
-        # Created by create_restricted_roles() below -- did not exist as roles yet.
         "Psychiatrist",
         "Occupational Therapist",
         "Nutritionist",
