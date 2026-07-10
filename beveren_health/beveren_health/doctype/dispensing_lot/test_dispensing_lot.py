@@ -46,3 +46,13 @@ class IntegrationTestDispensingLot(IntegrationTestCase):
 		self.assertEqual(round_dispensing_qty(0.79), 0)
 		self.assertEqual(round_dispensing_qty(0.80), 1)
 		self.assertEqual(round_dispensing_qty(50), 50)
+		self.assertEqual(round_dispensing_qty(45.117647), 45)
+
+	def test_round_dispensing_qty_small_fraction_rounds_down_for_units(self):
+		# UNIT rounding only — values below 1 round down (e.g. 0.126 is not a whole unit count).
+		self.assertEqual(round_dispensing_qty(0.126), 0)
+
+	def test_partial_pack_qty_with_small_conversion_factor(self):
+		# 0.767 PACK ÷ 0.017 per UNIT ≈ 45.12 → rounds down to 45
+		pack_size = 1 / 0.017
+		self.assertEqual(compute_dispensing_qty_per_serial(0.767, ["SN1"], pack_size=pack_size), [45])

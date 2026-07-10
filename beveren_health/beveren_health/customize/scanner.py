@@ -37,14 +37,13 @@ DOCTYPE_CONFIG = {
         "item_field": "items",
         "qty_field": "qty",
         "amount_field": "amount",
-        "rate_field": "rate",
+        "rate_field": "basic_rate",
         "gtin_field": "custom_gstin",
         "expiry_field": "custom_expiry_date",
         "mfg_field": "custom_manufacturing_date",
         "additional_fields": {
             "transfer_qty": "qty",
-            "basic_rate": "rate",
-            "basic_amount": "amount"
+            "basic_amount": "amount",
         }
     },
     "Stock Scanner": {
@@ -89,6 +88,17 @@ def _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=Fal
     mfg_val = parsed.get("mfg_date")
     if mfg_val and (not only_if_empty or not row.get(mfg_field)):
         update_values[mfg_field] = mfg_val
+
+
+def _buying_rate(item_code):
+	return (
+		frappe.db.get_value(
+			"Item Price", {"item_code": item_code, "buying": 1}, "price_list_rate"
+		)
+		or 0
+	)
+
+
 @frappe.whitelist()
 def process_batch_scan(
 	barcode_data,
@@ -117,10 +127,10 @@ def process_batch_scan(
             }
         
         config = DOCTYPE_CONFIG[doctype]
+        fast_persist = doctype == "Stock Scanner"
         
         # Parse barcode
         parsed = parse_barcode(barcode_data)
-        frappe.logger().info(f"GS1 Parser Result for {doctype}: {parsed}")
         
         if not parsed.get('batch_no'):
             return {
@@ -157,11 +167,17 @@ def process_batch_scan(
             # Check if the existing batch is on the current row
             if existing_row_info['index'] == current_idx:
                 # Case 2: Same batch as current row → append serial only
-                frappe.logger().info(f"Case 2: Same batch on current row - appending serial")
                 return append_dispensing_lot_to_row(doc, config, existing_row_info['row'], parsed, item)
             else:
                 # Case 4: Batch lives on a different row → move focus there
-                frappe.logger().info(f"Case 4: Batch exists on different row (index {existing_row_info['index']}) - moving focus")
+                if fast_persist:
+                    result = append_dispensing_lot_to_row(
+                        doc, config, existing_row_info["row"], parsed, item
+                    )
+                    result["action"] = "move_to_existing"
+                    result["existing_row_index"] = existing_row_info["index"]
+                    result["server_persisted"] = True
+                    return result
                 return {
                     "success": True,
                     "action": "move_to_existing",
@@ -179,14 +195,24 @@ def process_batch_scan(
             # Batch doesn't exist anywhere in document
             # Check if current row already has a batch (any batch)
             if current_batch_no and current_batch_no.strip():
-                # Current row has a batch, and it's different from scanned batch
                 # Case 3: Different batch → create new row
-                frappe.logger().info(f"Case 3: Current row has batch '{current_batch_no}', scanned batch '{parsed['batch_no']}' is different - creating new row")
-                return create_new_row(config, item, parsed, warehouse)
+                return create_new_row(
+                    config,
+                    item,
+                    parsed,
+                    warehouse,
+                    doc=doc if fast_persist else None,
+                )
             else:
                 # Case 1: Current row has no batch yet → assign to current row
-                frappe.logger().info(f"Case 1: Current row has no batch - assigning to current row")
-                return assign_to_current_row(config, item, parsed, warehouse)
+                return assign_to_current_row(
+                    config,
+                    item,
+                    parsed,
+                    warehouse,
+                    row_name=current_row_name if fast_persist else None,
+                    persist=fast_persist,
+                )
     
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), f"{doctype} Scanner Error")
@@ -194,35 +220,69 @@ def process_batch_scan(
 
 # ─── Action helpers ───────────────────────────────────────────────────────────
 
-def assign_to_current_row(config, item, parsed, warehouse=None):
+def assign_to_current_row(
+	config, item, parsed, warehouse=None, row_name=None, persist=False
+):
     """Case 1 – first scan on an empty row: assign batch + serial."""
-    batch_doc = get_or_create_batch(
-        item.name, parsed["batch_no"], parsed.get("expiry_date")
-    )
-    resolved_batch = batch_doc.name if batch_doc else parsed["batch_no"]
+    # batch already resolved in process_batch_scan
+    resolved_batch = parsed["batch_no"]
+    rate = _buying_rate(item.name)
+    serial_no = parsed.get("serial_no")
+    qty = 1
+    amount = rate * qty
 
-    return {
+    result = {
         "success": True,
         "action": "assign_to_current",
         "item_code": item.name,
         "item_name": item.item_name,
         "uom": item.stock_uom,
         "batch_no": resolved_batch,
-        "serial_no": parsed.get("serial_no"),
-        "expiry_date": parsed.get('expiry_date'),
-        "mfg_date": parsed.get('mfg_date'),
-        "qty": 1,
-        "valuation_rate": frappe.db.get_value(
-            "Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate"
-        )
-        or 0,
-        "rate": frappe.db.get_value(
-            "Item Price", {"item_code": item.name, "buying": 1}, "price_list_rate"
-        )
-        or 0,
+        "serial_no": serial_no,
+        "expiry_date": parsed.get("expiry_date"),
+        "mfg_date": parsed.get("mfg_date"),
+        "qty": qty,
+        "valuation_rate": rate,
+        "rate": rate,
+        "amount": amount,
         "warehouse": warehouse,
-        "gtin": parsed.get('gtin'),
+        "gtin": parsed.get("gtin"),
+        "server_persisted": False,
     }
+
+    if persist and row_name and frappe.db.exists(config["child_doctype"], row_name):
+        lot_field = _lot_field(config)
+        update_values = {
+            "item_code": item.name,
+            "item_name": item.item_name,
+            "batch_no": resolved_batch,
+            config["qty_field"]: qty,
+            config["amount_field"]: amount,
+            lot_field: serial_no or "",
+        }
+        if config.get("rate_field"):
+            update_values[config["rate_field"]] = rate
+        if warehouse and frappe.get_meta(config["child_doctype"]).has_field("warehouse"):
+            update_values["warehouse"] = warehouse
+        for field, source_field in config.get("additional_fields", {}).items():
+            if source_field == "qty":
+                update_values[field] = qty
+            elif source_field == "amount":
+                update_values[field] = amount
+            elif source_field == "rate":
+                update_values[field] = rate
+        # Build a lightweight row stub for metadata helper
+        row_stub = frappe._dict({"name": row_name})
+        _apply_parsed_metadata(update_values, row_stub, parsed, config, only_if_empty=False)
+        if frappe.get_meta(config["child_doctype"]).has_field("use_serial_batch_fields"):
+            update_values["use_serial_batch_fields"] = 1
+        if frappe.get_meta(config["child_doctype"]).has_field("allow_zero_valuation_rate"):
+            update_values["allow_zero_valuation_rate"] = 1
+        frappe.db.set_value(config["child_doctype"], row_name, update_values)
+        result["row_name"] = row_name
+        result["server_persisted"] = True
+
+    return result
 
 
 def append_dispensing_lot_to_row(doc, config, row, parsed, item):
@@ -274,7 +334,9 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
             update_values[field] = rate
 
     frappe.db.set_value(config["child_doctype"], row.name, update_values)
-    doc.reload()
+    # Keep in-memory row in sync for subsequent scans in the same request
+    for key, value in update_values.items():
+        row.set(key, value)
 
     return {
         "success": True,
@@ -291,6 +353,7 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
         "gtin": parsed.get("gtin"),
         "expiry_date": parsed.get("expiry_date"),
         "mfg_date": parsed.get("mfg_date"),
+        "server_persisted": True,
     }
     
 # def append_serial_to_row(doc, config, row, parsed, item):
@@ -385,19 +448,16 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
 #         "batch_no": parsed['batch_no']
 #     }
 
-def create_new_row(config, item, parsed, warehouse=None):
+def create_new_row(config, item, parsed, warehouse=None, doc=None):
     """Case 3 – different batch, current row already used: signal JS to add a new child row."""
-    batch_doc = get_or_create_batch(
-        item.name, parsed["batch_no"], parsed.get("expiry_date")
-    )
-    resolved_batch = batch_doc.name if batch_doc else parsed["batch_no"]
-    
-    rate = frappe.db.get_value(
-        "Item Price",
-        {"item_code": item.name, "buying": 1},
-        "price_list_rate"
-    ) or 0
-    return {
+    # batch already resolved in process_batch_scan
+    resolved_batch = parsed["batch_no"]
+    rate = _buying_rate(item.name)
+    serial_no = parsed.get("serial_no") or ""
+    qty = 1
+    amount = rate
+
+    result = {
         "success": True,
         "action": "create_new_row",
         "item_code": item.name,
@@ -405,15 +465,53 @@ def create_new_row(config, item, parsed, warehouse=None):
         "uom": item.stock_uom,
         "valuation_rate": rate,
         "rate": rate,
-        "amount": rate,
-        "qty": 1,
+        "amount": amount,
+        "qty": qty,
         "batch_no": resolved_batch,
-        "serial_no": parsed.get('serial_no'),
-        "expiry_date": parsed.get('expiry_date'),
-        "mfg_date": parsed.get('mfg_date'),
+        "serial_no": serial_no,
+        "expiry_date": parsed.get("expiry_date"),
+        "mfg_date": parsed.get("mfg_date"),
         "warehouse": warehouse,
-        "gtin": parsed.get('gtin')
+        "gtin": parsed.get("gtin"),
+        "server_persisted": False,
     }
+
+    if doc is not None:
+        lot_field = _lot_field(config)
+        row_data = {
+            "item_code": item.name,
+            "item_name": item.item_name,
+            "batch_no": resolved_batch,
+            config["qty_field"]: qty,
+            config["amount_field"]: amount,
+            lot_field: serial_no,
+        }
+        if config.get("rate_field"):
+            row_data[config["rate_field"]] = rate
+        if warehouse and frappe.get_meta(config["child_doctype"]).has_field("warehouse"):
+            row_data["warehouse"] = warehouse
+        for field, source_field in config.get("additional_fields", {}).items():
+            if source_field == "qty":
+                row_data[field] = qty
+            elif source_field == "amount":
+                row_data[field] = amount
+            elif source_field == "rate":
+                row_data[field] = rate
+        if frappe.get_meta(config["child_doctype"]).has_field("use_serial_batch_fields"):
+            row_data["use_serial_batch_fields"] = 1
+        if frappe.get_meta(config["child_doctype"]).has_field("allow_zero_valuation_rate"):
+            row_data["allow_zero_valuation_rate"] = 1
+
+        row_stub = frappe._dict(row_data)
+        _apply_parsed_metadata(row_data, row_stub, parsed, config, only_if_empty=False)
+
+        row = doc.append(config["item_field"], row_data)
+        doc.flags.ignore_permissions = True
+        doc.save()
+        result["row_name"] = row.name
+        result["server_persisted"] = True
+
+    return result
 
 # ─── Barcode parsing ──────────────────────────────────────────────────────────
 
@@ -690,26 +788,33 @@ def find_item_by_batch_or_serial(batch_no, serial_no=None):
 
 def find_existing_batch_row(doc, config, item_code, batch_no):
     """Find if batch already exists in document items."""
-    frappe.logger().info(f"Looking for batch '{batch_no}' with item '{item_code}' in {doc.doctype} items")
-    items = doc.get(config['item_field'])
+    items = doc.get(config["item_field"]) or []
     batch_id = frappe.db.get_value("Batch", batch_no, "batch_id") if batch_no else None
-    
+
+    # Prefetch batch_id for all row batches in one query (avoids N+1)
+    row_batches = list({(row.batch_no or "") for row in items if row.batch_no})
+    batch_id_map = {}
+    if batch_id and row_batches:
+        batch_id_map = {
+            d.name: d.batch_id
+            for d in frappe.get_all(
+                "Batch",
+                filters={"name": ["in", row_batches]},
+                fields=["name", "batch_id"],
+            )
+        }
+
     for idx, row in enumerate(items):
-        frappe.logger().info(f"Row {idx}: item_code={row.item_code}, batch_no={row.batch_no}")
         if row.item_code != item_code:
             continue
         row_batch = row.batch_no or ""
         if row_batch == batch_no:
-            frappe.logger().info(f"Found matching row at index {idx}")
-            return {'index': idx, 'row': row}
-        if batch_id and row_batch:
-            row_batch_id = frappe.db.get_value("Batch", row_batch, "batch_id")
-            if row_batch_id == batch_id:
-                frappe.logger().info(f"Found matching row at index {idx} by batch_id")
-                return {'index': idx, 'row': row}
-    
-    frappe.logger().info("No matching row found")
+            return {"index": idx, "row": row}
+        if batch_id and row_batch and batch_id_map.get(row_batch) == batch_id:
+            return {"index": idx, "row": row}
+
     return None
+
 
 def get_current_row_index(doc, config, current_item_code, current_batch_no, current_row_name=None):
     """Get index of the row being scanned (prefer row name, then item+batch)."""
@@ -730,62 +835,66 @@ def get_current_row_index(doc, config, current_item_code, current_batch_no, curr
 
     return -1
 
+
 def get_or_create_batch(item_code, batch_no, expiry_date=None):
     """Create or get batch with duplicate handling for same batch across different items."""
     if not batch_no:
         return None
-    
+
+    # Already a Batch document name
+    if frappe.db.exists("Batch", batch_no):
+        batch_item = frappe.db.get_value("Batch", batch_no, "item")
+        if batch_item == item_code:
+            return frappe.get_cached_doc("Batch", batch_no)
+
     # Step 1: Try to find existing batch for this exact item by batch_id
-    batch_name = frappe.db.get_value("Batch", {
-        "batch_id": batch_no, 
-        "item": item_code
-    }, "name")
-    
+    batch_name = frappe.db.get_value(
+        "Batch", {"batch_id": batch_no, "item": item_code}, "name"
+    )
     if batch_name:
         return frappe.get_cached_doc("Batch", batch_name)
-    
+
     # Step 2: Try to find by original_batch_id for this item
-    batch_name = frappe.db.get_value("Batch", {
-        "custom_original_batch_id": batch_no, 
-        "item": item_code
-    }, "name")
-    
+    batch_name = frappe.db.get_value(
+        "Batch", {"custom_original_batch_id": batch_no, "item": item_code}, "name"
+    )
     if batch_name:
-        frappe.logger().info(f"Found batch {batch_name} by original_batch_id {batch_no} for item {item_code}")
         return frappe.get_cached_doc("Batch", batch_name)
-    
+
     # Step 3: Check if this batch exists for a DIFFERENT item
-    existing_batch = frappe.db.get_value("Batch", {
-        "batch_id": batch_no
-    }, ["name", "item"], as_dict=True)
-    
+    existing_batch = frappe.db.get_value(
+        "Batch", {"batch_id": batch_no}, ["name", "item"], as_dict=True
+    )
+
     if existing_batch:
-        # Batch exists for different item - create unique version
         unique_batch_id = f"{batch_no}_{item_code}"
-        
-        frappe.logger().info(f"Batch {batch_no} already exists for item {existing_batch.item}. Creating {unique_batch_id} for {item_code}")
-        
-        batch = frappe.get_doc({
+        existing_unique = frappe.db.get_value(
+            "Batch", {"batch_id": unique_batch_id, "item": item_code}, "name"
+        )
+        if existing_unique:
+            return frappe.get_cached_doc("Batch", existing_unique)
+
+        batch = frappe.get_doc(
+            {
+                "doctype": "Batch",
+                "batch_id": unique_batch_id,
+                "custom_original_batch_id": batch_no,
+                "item": item_code,
+                "expiry_date": expiry_date,
+            }
+        )
+        batch.insert(ignore_permissions=True)
+        return batch
+
+    # Step 4: No conflict - create batch normally
+    batch = frappe.get_doc(
+        {
             "doctype": "Batch",
-            "batch_id": unique_batch_id,
+            "batch_id": batch_no,
             "custom_original_batch_id": batch_no,
             "item": item_code,
-            "expiry_date": expiry_date
-        })
-        batch.insert(ignore_permissions=True)
-        frappe.db.commit()
-        return batch
-    
-    # Step 4: No conflict - create batch normally
-    frappe.logger().info(f"Creating new batch {batch_no} for item {item_code}")
-    
-    batch = frappe.get_doc({
-        "doctype": "Batch",
-        "batch_id": batch_no,
-        "custom_original_batch_id": batch_no,
-        "item": item_code,
-        "expiry_date": expiry_date
-    })
+            "expiry_date": expiry_date,
+        }
+    )
     batch.insert(ignore_permissions=True)
-    frappe.db.commit()
     return batch

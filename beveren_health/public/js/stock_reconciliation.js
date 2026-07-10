@@ -583,7 +583,8 @@ function setup_dispensing_lot_qty_correction_button(frm) {
 		},
 		callback(r) {
 			const fixable = (r.message && r.message.fixable) || [];
-			if (!fixable.length) {
+			const skipped = (r.message && r.message.skipped) || [];
+			if (!fixable.length && !skipped.some((s) => s.expected_qty != null)) {
 				return;
 			}
 
@@ -592,6 +593,84 @@ function setup_dispensing_lot_qty_correction_button(frm) {
 			}, __("Actions"));
 		},
 	});
+}
+
+function format_lot_qty_change(lot) {
+	const uom = lot.uom ? ` ${lot.uom}` : "";
+	return `${flt(lot.current_qty)} → ${flt(lot.expected_qty)}${uom}`;
+}
+
+function build_lot_correction_table_rows(lots, include_reason) {
+	return lots
+		.map((lot) => {
+			let row = `<tr>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.serial_no || lot.name || "")}</td>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
+				<td style="padding:4px 8px; text-align:right;">${frappe.utils.escape_html(format_lot_qty_change(lot))}</td>`;
+			if (include_reason) {
+				row += `<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.reason || "")}</td>`;
+			}
+			row += "</tr>";
+			return row;
+		})
+		.join("");
+}
+
+function build_lot_correction_summary_html(fixable, skipped, unchanged, full_detail) {
+	const sections = [];
+
+	if (fixable.length) {
+		sections.push(`<p><strong>${__("Will update")}</strong></p>
+			<table class="table table-bordered" style="font-size:12px;">
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th></tr></thead>
+				<tbody>${build_lot_correction_table_rows(fixable, false)}</tbody>
+			</table>`);
+	}
+
+	const skipped_with_qty = skipped.filter((s) => s.expected_qty != null);
+	if (skipped_with_qty.length && full_detail) {
+		sections.push(`<p style="margin-top:12px;"><strong>${__("Cannot update (already used or not Active)")}</strong></p>
+			<table class="table table-bordered" style="font-size:12px;">
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th><th>${__("Reason")}</th></tr></thead>
+				<tbody>${build_lot_correction_table_rows(skipped_with_qty, true)}</tbody>
+			</table>`);
+	} else if (skipped_with_qty.length) {
+		sections.push(`<p class="text-muted" style="margin-top:12px;">${__(
+			"{0} lot(s) need changes but cannot be updated (already used or not Active). Open Dispensing Lots to review.",
+			[skipped_with_qty.length]
+		)}</p>`);
+	}
+
+	if (full_detail && unchanged.length) {
+		const mismatched_unchanged = unchanged.filter(
+			(lot) => flt(lot.current_qty) !== flt(lot.expected_qty)
+		);
+		const show_unchanged = mismatched_unchanged.length ? mismatched_unchanged : unchanged;
+		sections.push(`<p style="margin-top:12px;"><strong>${__("Already matches expected")} (${show_unchanged.length})</strong></p>
+			<table class="table table-bordered" style="font-size:12px;">
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty")}</th></tr></thead>
+				<tbody>${show_unchanged
+					.map(
+						(lot) =>
+							`<tr><td>${frappe.utils.escape_html(lot.serial_no || lot.name || "")}</td>` +
+							`<td>${frappe.utils.escape_html(lot.item || "")}</td>` +
+							`<td style="text-align:right;">${flt(lot.current_qty)} ${frappe.utils.escape_html(lot.uom || "")}</td></tr>`
+					)
+					.join("")}</tbody>
+			</table>`);
+	}
+
+	if (!fixable.length && !sections.length) {
+		return `<p>${__("All dispensing lot quantities already match this Stock Reconciliation.")}</p>`;
+	}
+
+	if (fixable.length) {
+		sections.push(
+			`<p class="text-muted" style="margin-top:8px;">${__("Only unused Active lots are updated.")}</p>`
+		);
+	}
+
+	return sections.join("");
 }
 
 function run_dispensing_lot_qty_correction(frm) {
@@ -604,33 +683,24 @@ function run_dispensing_lot_qty_correction(frm) {
 		},
 		callback(r) {
 			const fixable = (r.message && r.message.fixable) || [];
+			const skipped = (r.message && r.message.skipped) || [];
+			const unchanged = (r.message && r.message.unchanged) || [];
+
 			if (!fixable.length) {
-				frappe.msgprint(__("All dispensing lot quantities are already correct."));
+				frappe.msgprint({
+					title: __("No lots to correct"),
+					indicator: "orange",
+					message: build_lot_correction_summary_html(fixable, skipped, unchanged, true),
+				});
 				return;
 			}
-
-			const rows = fixable
-				.map((lot) => {
-					return `<tr>
-						<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.serial_no || lot.name)}</td>
-						<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
-						<td style="padding:4px 8px; text-align:right;">${flt(lot.current_qty)} → ${flt(lot.expected_qty)} ${frappe.utils.escape_html(lot.uom || "")}</td>
-					</tr>`;
-				})
-				.join("");
 
 			frappe.confirm(
 				`<p>${__(
 					"Update {0} dispensing lot(s) to match quantities on this Stock Reconciliation?",
 					[fixable.length]
 				)}</p>
-				<table class="table table-bordered" style="font-size:12px; margin-top:8px;">
-					<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th></tr></thead>
-					<tbody>${rows}</tbody>
-				</table>
-				<p class="text-muted" style="margin-top:8px;">${__(
-					"Only unused Active lots are updated. Lots that were already sold or partially used are skipped."
-				)}</p>`,
+				${build_lot_correction_summary_html(fixable, skipped, unchanged, false)}`,
 				() => {
 					frappe.call({
 						method:
