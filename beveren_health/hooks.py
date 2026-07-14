@@ -377,6 +377,14 @@ extend_doctype_class = {
 fixtures = [
     {"doctype" : "TNA Template"},
     {
+        # Employee IDs use the EMP-.###. series only (default, single option, field hidden)
+        "doctype": "Property Setter",
+        "filters": [
+            ["doc_type", "=", "Employee"],
+            ["field_name", "=", "naming_series"],
+        ]
+    },
+    {
         "doctype": "Custom Field",
         "filters": [
             ["name", "in", [
