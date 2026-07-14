@@ -112,7 +112,15 @@ doctype_js = {
 # after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
 
 after_migrate = [
-    "beveren_health.scripts.create_fnf_from_xlsx.run"
+    "beveren_health.scripts.create_fnf_from_xlsx.run",
+    "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
+]
+
+# Boot
+# ----
+# Prune the desk grid to the Healthcare app only for clinical/healthcare staff.
+extend_bootinfo = [
+    "beveren_health.beveren_health.override.desk_sidebar.restrict_healthcare_sidebar"
 ]
 
 # Uninstallation
