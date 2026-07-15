@@ -34,8 +34,15 @@ RESTRICTED_ROLES = frozenset(
         "Occupational Therapist",
         "Nutritionist",
         "Insurance",
+        "Pharmacist",
     }
 )
+
+# Roles that additionally keep the Klik POS icon tree (pharmacists dispense via the POS).
+# NOTE: this must be the desktop-icon *label* exactly as it appears in the boot payload,
+# which is the module label "KLiK PoS" (not the workspace title "Klik POS").
+POS_ROLES = frozenset({"Pharmacist"})
+POS_ICON_ROOT = "KLiK PoS"
 
 # Roles that keep full access even if the user also holds a restricted role.
 # (Administrator is always exempt, separately.)
@@ -61,9 +68,12 @@ def restrict_healthcare_sidebar(bootinfo=None):
     if _is_exempt() or not _has_restricted_role():
         return
 
+    user_roles = set(frappe.get_roles())
     keep_roots = {KEEP_ICON_ROOT}
-    if EMPLOYEE_ROLE in frappe.get_roles():
+    if EMPLOYEE_ROLE in user_roles:
         keep_roots.add(HR_ICON_ROOT)
+    if POS_ROLES & user_roles:
+        keep_roots.add(POS_ICON_ROOT)
 
     kept_icons = _icons_rooted_at(bootinfo.get("desktop_icons") or [], keep_roots)
     bootinfo.desktop_icons = kept_icons
@@ -107,6 +117,42 @@ def _rooted_at(icon, by_label, keep_roots):
         seen.add(parent)
         current = by_label.get(parent)
     return False
+
+
+def set_klik_pos_workspace_icon():
+    """Apply our custom Klik POS artwork in both places the desk shows it.
+
+    1. The desktop grid tile is a ``Desktop Icon`` of type "App" that renders ``logo_url`` as an
+       image — this is what users actually see, so we repoint it at our shipped SVG.
+    2. The Klik POS workspace's ``icon`` field (sidebar/card) is pointed at the matching stroke
+       glyph ``#icon-klik-pos`` from ``beveren_health/public/icons.svg`` (loaded via
+       ``app_include_icons``) so the two stay visually consistent.
+
+    Idempotent; safe to run on every ``after_migrate``. Lets ``modified`` bump so the desk's
+    client-side caches (keyed on that timestamp) actually refresh.
+    """
+    changed = False
+
+    # The ?v= token is a cache-buster: /assets files are served with long cache headers, so a
+    # colour/content change to the same filename would otherwise keep serving the stale image.
+    # Bump this token whenever klik_pos_icon.svg changes.
+    logo_url = "/assets/beveren_health/images/klik_pos_icon.svg?v=2"
+    desktop_icon = "KLiK PoS"
+    if frappe.db.exists("Desktop Icon", desktop_icon):
+        if frappe.db.get_value("Desktop Icon", desktop_icon, "logo_url") != logo_url:
+            frappe.db.set_value("Desktop Icon", desktop_icon, "logo_url", logo_url)
+            changed = True
+
+    workspace, icon = "Klik POS", "klik-pos"
+    if frappe.db.exists("Workspace", workspace):
+        if frappe.db.get_value("Workspace", workspace, "icon") != icon:
+            frappe.db.set_value("Workspace", workspace, "icon", icon)
+            changed = True
+
+    if changed:
+        frappe.db.commit()
+        # Desktop icons are cached per user; drop it so the new artwork boots.
+        frappe.cache.delete_key("desktop_icons")
 
 
 def create_restricted_roles():

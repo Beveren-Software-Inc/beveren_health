@@ -74,7 +74,8 @@ doctype_js = {
 # Svg Icons
 # ------------------
 # include app icons in desk
-# app_include_icons = "beveren_health/public/icons.svg"
+# Custom desk icon sprite (adds #icon-klik-pos, used by the Klik POS workspace).
+app_include_icons = "/assets/beveren_health/icons.svg"
 
 # Home Pages
 # ----------
@@ -114,6 +115,7 @@ doctype_js = {
 after_migrate = [
     "beveren_health.scripts.create_fnf_from_xlsx.run",
     "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
+    "beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
 ]
 
 # Boot

@@ -1,0 +1,17 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Klik POS">
+  <defs>
+    <linearGradient id="klikPosBg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5cc6f5"/>
+      <stop offset="1" stop-color="#2b9fe0"/>
+    </linearGradient>
+  </defs>
+  <!-- app tile -->
+  <rect x="1" y="1" width="62" height="62" rx="15" fill="url(#klikPosBg)"/>
+  <!-- pharmacy point-of-sale: shopping bag + care cross (approved design #5) -->
+  <g transform="translate(15 15) scale(1.4167)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+    <path d="M3 6h18"/>
+    <path d="M12 10.5v5"/>
+    <path d="M9.5 13h5"/>
+  </g>
+</svg>

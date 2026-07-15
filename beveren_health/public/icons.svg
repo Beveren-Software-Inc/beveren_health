@@ -1,0 +1,18 @@
+<!--
+  beveren_health desk icon sprite.
+
+  Injected into the desk via the `app_include_icons` hook (see hooks.py); each <symbol>
+  becomes referenceable as `#icon-<id>` by any Workspace whose `icon` field matches.
+
+  Convention (same as frappe/public/icons/timeless/icons.svg): 24x24 viewBox, stroke-based
+  lucide glyphs, round caps/joins, NO fill/stroke colour set (the desk supplies the colour).
+-->
+<svg id="beveren-symbols" aria-hidden="true" style="display: none;" xmlns="http://www.w3.org/2000/svg">
+	<!-- Klik POS — pharmacy point of sale: shopping bag + care cross (lucide-derived, MIT). -->
+	<symbol viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" id="icon-klik-pos">
+		<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M3 6h18" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M12 10.5v5" stroke-linecap="round" stroke-linejoin="round"/>
+		<path d="M9.5 13h5" stroke-linecap="round" stroke-linejoin="round"/>
+	</symbol>
+</svg>
