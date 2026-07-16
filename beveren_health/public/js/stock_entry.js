@@ -68,6 +68,10 @@ frappe.ui.form.on('Stock Entry', {
 			frm.add_custom_button(__("Batch Label Print"), function () {
 				show_se_batch_range_dialog(frm);
 			}, __("Actions"));
+
+			frm.add_custom_button(__("Update Batch Expiry Dates"), function () {
+				update_batch_dates_from_stock_entry(frm);
+			}, __("Actions"));
 		}
     },
 
@@ -88,6 +92,49 @@ frappe.ui.form.on('Stock Entry', {
         run_stock_entry_scan(frm, cdt, cdn, row, barcode, row_idx);
     },
 });
+
+function update_batch_dates_from_stock_entry(frm) {
+	const has_dates = (frm.doc.items || []).some(
+		(row) => row.custom_expiry_date || row.custom_manufacturing_date
+	);
+	if (!has_dates) {
+		frappe.msgprint(__("No expiry or manufacturing dates found on item rows."));
+		return;
+	}
+
+	frappe.confirm(
+		__("Update Batch expiry / manufacturing dates from this Stock Entry's item rows?"),
+		() => {
+			frappe.call({
+				method:
+					"beveren_health.beveren_health.override.batch.update_batch_dates_from_stock_entry",
+				args: { stock_entry: frm.doc.name },
+				freeze: true,
+				freeze_message: __("Updating batch dates..."),
+				callback(r) {
+					if (!r.message) return;
+					const { updated_count, updated, skipped } = r.message;
+					let msg = __("Updated {0} batch(es).", [updated_count || 0]);
+					if (updated && updated.length) {
+						msg += "<br><br><b>" + __("Batches") + ":</b> " + updated.join(", ");
+					}
+					if (skipped && skipped.length) {
+						msg +=
+							"<br><br><b>" +
+							__("Notes") +
+							":</b><br>" +
+							skipped.slice(0, 20).join("<br>");
+					}
+					frappe.msgprint({
+						title: __("Batch Dates"),
+						indicator: updated_count ? "green" : "orange",
+						message: msg,
+					});
+				},
+			});
+		}
+	);
+}
 
 function setup_row_click_tracking(frm) {
     if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
