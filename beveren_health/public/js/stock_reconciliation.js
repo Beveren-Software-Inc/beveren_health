@@ -45,7 +45,13 @@ frappe.ui.form.on('Stock Reconciliation', {
 				setup_dispensing_lot_qty_correction_button(frm);
 			}
 		}
-	}
+	},
+
+	set_warehouse: function (frm) {
+		beveren_health.warehouse_cost_center.set_from_warehouse(frm, frm.doc.set_warehouse, {
+			update_items: false,
+		});
+	},
 
 });
 
@@ -183,6 +189,16 @@ function sr_apply_scan_fields(frm, cdt, cdn, result, warehouse, callback) {
 // ─── Scanner field handler (same flow as Purchase Receipt custom_scanner) ─────
 
 frappe.ui.form.on('Stock Reconciliation Item', {
+	warehouse: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		// SR cost center is header-only; set from row warehouse when default is blank
+		if (!frm.doc.set_warehouse && row.warehouse) {
+			beveren_health.warehouse_cost_center.set_from_warehouse(frm, row.warehouse, {
+				update_items: false,
+			});
+		}
+	},
+
 	custom_scanner: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		let barcode = row.custom_scanner;
