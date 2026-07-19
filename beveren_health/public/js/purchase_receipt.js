@@ -36,7 +36,11 @@ frappe.ui.form.on('Purchase Receipt', {
 				show_pr_batch_range_dialog(frm);
 			}, __("Actions"));
 		}
-    }
+    },
+
+	set_warehouse: function (frm) {
+		beveren_health.warehouse_cost_center.set_from_warehouse(frm, frm.doc.set_warehouse);
+	},
 });
 
 
@@ -57,6 +61,11 @@ function setup_row_click_tracking(frm) {
 // ─── Scanner field handler ────────────────────────────────────────────────────
 
 frappe.ui.form.on('Purchase Receipt Item', {
+	warehouse: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		beveren_health.warehouse_cost_center.set_row_from_warehouse(frm, cdt, cdn, row.warehouse);
+	},
+
     custom_scanner: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         let barcode = row.custom_scanner;

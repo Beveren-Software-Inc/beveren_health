@@ -75,6 +75,16 @@ frappe.ui.form.on('Stock Entry', {
 		}
     },
 
+	from_warehouse: function (frm) {
+		const warehouse = frm.doc.to_warehouse || frm.doc.from_warehouse;
+		beveren_health.warehouse_cost_center.set_from_warehouse(frm, warehouse);
+	},
+
+	to_warehouse: function (frm) {
+		const warehouse = frm.doc.to_warehouse || frm.doc.from_warehouse;
+		beveren_health.warehouse_cost_center.set_from_warehouse(frm, warehouse);
+	},
+
     /** Header scanner field (custom_custom_scanner) — same flow as row scanner */
     custom_custom_scanner: function(frm) {
         const barcode = (frm.doc.custom_custom_scanner || '').trim();
@@ -222,6 +232,18 @@ function run_stock_entry_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
 }
 
 frappe.ui.form.on('Stock Entry Detail', {
+	s_warehouse: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		const warehouse = row.t_warehouse || row.s_warehouse;
+		beveren_health.warehouse_cost_center.set_row_from_warehouse(frm, cdt, cdn, warehouse);
+	},
+
+	t_warehouse: function (frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		const warehouse = row.t_warehouse || row.s_warehouse;
+		beveren_health.warehouse_cost_center.set_row_from_warehouse(frm, cdt, cdn, warehouse);
+	},
+
     custom_scanner: function (frm, cdt, cdn) {
         const row = locals[cdt][cdn];
         const barcode = (row.custom_scanner || '').trim();
