@@ -13,7 +13,20 @@ def before_insert(doc, method):
         return
     
     doc.standard_working_hours = time_diff_in_hours(shift.end_time, shift.start_time)
-    
+
+    # Feeding-hours entitlement: reduce a nursing mother's expected hours by her daily paid
+    # feeding break (2h while child < 6 months, 1h from 6-12 months) so the less-time engine
+    # below does not dock her for the entitled break. No effect for employees without an
+    # active Feeding Hours Entitlement.
+    from beveren_health.beveren_health.doctype.feeding_hours_entitlement.feeding_hours_entitlement import (
+        get_feeding_hours,
+    )
+
+    feeding_hours = get_feeding_hours(doc.employee, doc.attendance_date)
+    if feeding_hours:
+        doc.custom_feeding_hours = feeding_hours
+        doc.standard_working_hours = max(0, doc.standard_working_hours - feeding_hours)
+
     if not (doc.in_time and doc.out_time and doc.shift):
         return
 

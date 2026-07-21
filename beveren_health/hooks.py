@@ -113,6 +113,7 @@ app_include_icons = "/assets/beveren_health/icons.svg"
 # after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
 
 after_migrate = [
+    "beveren_health.beveren_health.override.hr_workspace.add_hr_workspace_links",
     "beveren_health.scripts.create_fnf_from_xlsx.run",
     "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
     "beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
@@ -188,6 +189,8 @@ doc_events = {
         "validate": [
             "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
             "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+            # ACC-181 OP / IP price list by admission status
+            "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient",
         ],
         "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
         "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
@@ -212,6 +215,22 @@ doc_events = {
     
     "Serial No": {
         "before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"
+    },
+    # --- Serene BRD ---------------------------------------------------------
+    # HR-154 / HR-155 / HR-156 patient-visit allowances
+    "Overtime Slip": {
+        "validate": "beveren_health.beveren_health.customize.overtime_allowance.validate"
+    },
+    # HR-107 HR policy document sharing
+    "HR Policy Document": {
+        "on_update": "beveren_health.beveren_health.customize.hr_policy.distribute_policy"
+    },
+    # ACC-181 OP / IP price list by admission status
+    "Sales Order": {
+        "validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
+    },
+    "Quotation": {
+        "validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
     },
     "Purchase Receipt": {
         "validate": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
@@ -384,6 +403,20 @@ fixtures = [
         "filters": [
             ["doc_type", "=", "Employee"],
             ["field_name", "=", "naming_series"],
+        ]
+    },
+    {
+        # Appraisal / feedback grids: bulk edit + dynamic row height. These were
+        # edited directly in the hrms app's DocType JSON, which loses them on any
+        # hrms upgrade; carried here as Property Setters instead.
+        "doctype": "Property Setter",
+        "filters": [
+            ["doc_type", "in", [
+                "Appraisal Goal",
+                "Appraisal Template Goal",
+                "Employee Feedback Rating",
+            ]],
+            ["property", "in", ["allow_bulk_edit", "row_format"]],
         ]
     },
     {
