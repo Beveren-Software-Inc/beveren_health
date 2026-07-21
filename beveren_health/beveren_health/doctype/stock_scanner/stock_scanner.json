@@ -10,6 +10,7 @@
   "naming_series",
   "company",
   "purpose",
+  "auto_save_scan_interval",
   "col1",
   "posting_date",
   "posting_time",
@@ -146,21 +147,27 @@
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "stock_reconciliation",
    "fieldtype": "Link",
    "label": "Stock Reconciliation",
-   "options": "Stock Reconciliation",
-   "read_only": 1
+   "options": "Stock Reconciliation"
   },
   {
    "fieldname": "column_break_mvis",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "10",
+   "fieldname": "auto_save_scan_interval",
+   "fieldtype": "Data",
+   "label": "Auto Save Scan Interval"
   }
  ],
  "icon": "fa fa-upload-alt",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-03 17:04:07.363548",
+ "modified": "2026-07-10 13:02:43.534093",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Stock Scanner",

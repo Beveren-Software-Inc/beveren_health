@@ -37,7 +37,10 @@ function ss_sync_qty_from_lots(frm, cdt, cdn) {
 	if (!row) {
 		return;
 	}
-	const qty = ss_count_lots(row.serial_no) || flt(row.qty) || 0;
+	const lot_count = ss_count_lots(row.serial_no);
+	const row_qty = flt(row.qty);
+	// One partial pack can have fractional qty (e.g. 0.655); only count lots when qty unset or multiple packs.
+	const qty = lot_count > 1 ? lot_count : (row_qty > 0 ? row_qty : lot_count || 0);
 	const rate = flt(row.valuation_rate);
 	frappe.model.set_value(cdt, cdn, "qty", qty);
 	frappe.model.set_value(cdt, cdn, "current_qty", qty);
@@ -184,9 +187,42 @@ function ss_refocus_scanner_field(frm, result) {
 	}, 100);
 }
 
+function ss_patch_row(cdt, cdn, values) {
+	const row = locals[cdt] && locals[cdt][cdn];
+	if (!row) {
+		return;
+	}
+	Object.keys(values).forEach((key) => {
+		if (values[key] !== undefined) {
+			row[key] = values[key];
+		}
+	});
+}
+
+const SS_SAVE_EVERY_N_SCANS_DEFAULT = 10;
+
+function ss_get_auto_save_interval(frm) {
+	const n = cint(frm.doc.auto_save_scan_interval);
+	return n > 0 ? n : SS_SAVE_EVERY_N_SCANS_DEFAULT;
+}
+
+function ss_finish_scan(frm, result, opts) {
+	opts = opts || {};
+	if (opts.message) {
+		frappe.show_alert({
+			message: opts.message,
+			indicator: opts.indicator || "green",
+			timeout: 1.5,
+		});
+	}
+	// Immediate refocus — no full save wait on the fast path
+	ss_refocus_scanner_field(frm, result);
+}
+
 function ss_save_and_refocus(frm, result) {
 	frm.save_or_update({
 		callback() {
+			frm.ss_scans_since_save = 0;
 			frappe.show_alert({
 				message: __("Saved"),
 				indicator: "green",
@@ -202,6 +238,16 @@ function ss_save_and_refocus(frm, result) {
 			});
 		},
 	});
+}
+
+/** Count successful scans; every N scans do a full document save. Returns true if save started. */
+function ss_note_scan_and_maybe_save(frm, result) {
+	frm.ss_scans_since_save = (frm.ss_scans_since_save || 0) + 1;
+	if (frm.ss_scans_since_save < ss_get_auto_save_interval(frm)) {
+		return false;
+	}
+	ss_save_and_refocus(frm, result);
+	return true;
 }
 
 function ss_process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
@@ -240,7 +286,16 @@ function ss_process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse
 					ss_handle_move_to_existing(frm, result);
 					break;
 			}
-			ss_save_and_refocus(frm, result);
+			// Fast path: persist per scan on server; full form save every 10 scans
+			if (result.server_persisted) {
+				if (result.action !== "create_new_row") {
+					if (!ss_note_scan_and_maybe_save(frm, result)) {
+						ss_finish_scan(frm, result);
+					}
+				}
+			} else {
+				ss_save_and_refocus(frm, result);
+			}
 		},
 		error() {
 			frappe.msgprint(__("Error processing scan. Check server logs."));
@@ -249,26 +304,48 @@ function ss_process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse
 }
 
 function ss_handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) {
-	frappe.model.set_value(cdt, cdn, "item_code", result.item_code);
-	frappe.model.set_value(cdt, cdn, "item_name", result.item_name);
-	frappe.model.set_value(cdt, cdn, "use_serial_batch_fields", 1);
-	frappe.model.set_value(cdt, cdn, "batch_no", result.batch_no);
-	frappe.model.set_value(cdt, cdn, "warehouse", warehouse);
-	frappe.model.set_value(cdt, cdn, "allow_zero_valuation_rate", 1);
-	if (result.rate) {
-		frappe.model.set_value(cdt, cdn, "valuation_rate", result.rate);
-	}
+	const qty = result.qty || 1;
+	const amount = result.amount || 0;
+	const rate = result.rate || result.valuation_rate || 0;
 
-	if (result.serial_no) {
-		ss_set_lots(cdt, cdn, result.serial_no, frm);
+	if (result.server_persisted) {
+		ss_patch_row(cdt, cdn, {
+			item_code: result.item_code,
+			item_name: result.item_name,
+			use_serial_batch_fields: 1,
+			batch_no: result.batch_no,
+			warehouse: warehouse,
+			allow_zero_valuation_rate: 1,
+			valuation_rate: rate,
+			serial_no: result.serial_no || "",
+			qty: qty,
+			current_qty: qty,
+			amount: amount,
+			current_amount: amount,
+			gtin: result.gtin || "",
+			expiry_date: result.expiry_date || "",
+			manufacturing_date: result.mfg_date || "",
+		});
 	} else {
-		frappe.model.set_value(cdt, cdn, "qty", 1);
-		frappe.model.set_value(cdt, cdn, "current_qty", 1);
-		const amount = result.amount || 0;
-		frappe.model.set_value(cdt, cdn, "amount", amount);
-		frappe.model.set_value(cdt, cdn, "current_amount", amount);
+		frappe.model.set_value(cdt, cdn, "item_code", result.item_code);
+		frappe.model.set_value(cdt, cdn, "item_name", result.item_name);
+		frappe.model.set_value(cdt, cdn, "use_serial_batch_fields", 1);
+		frappe.model.set_value(cdt, cdn, "batch_no", result.batch_no);
+		frappe.model.set_value(cdt, cdn, "warehouse", warehouse);
+		frappe.model.set_value(cdt, cdn, "allow_zero_valuation_rate", 1);
+		if (rate) {
+			frappe.model.set_value(cdt, cdn, "valuation_rate", rate);
+		}
+		if (result.serial_no) {
+			ss_set_lots(cdt, cdn, result.serial_no, frm);
+		} else {
+			frappe.model.set_value(cdt, cdn, "qty", 1);
+			frappe.model.set_value(cdt, cdn, "current_qty", 1);
+			frappe.model.set_value(cdt, cdn, "amount", amount);
+			frappe.model.set_value(cdt, cdn, "current_amount", amount);
+		}
+		ss_apply_scan_metadata(cdt, cdn, result, locals[cdt][cdn], false);
 	}
-	ss_apply_scan_metadata(cdt, cdn, result, locals[cdt][cdn], false);
 
 	frm.refresh_field("items");
 	frm.current_focused_row = row_idx;
@@ -282,13 +359,26 @@ function ss_handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse) 
 }
 
 function ss_handle_append_serial(frm, cdt, cdn, result, row_idx) {
-	frappe.model.set_value(cdt, cdn, "qty", result.new_qty);
-	frappe.model.set_value(cdt, cdn, "current_qty", result.new_qty);
-	frappe.model.set_value(cdt, cdn, "amount", result.new_amount);
-	frappe.model.set_value(cdt, cdn, "current_amount", result.new_amount);
-	ss_set_lots(cdt, cdn, result.all_dispensing_lots || result.all_serials, frm);
-	frappe.model.set_value(cdt, cdn, "allow_zero_valuation_rate", 1);
-	ss_apply_scan_metadata(cdt, cdn, result, locals[cdt][cdn], true);
+	const lots = result.all_dispensing_lots || result.all_serials || "";
+
+	if (result.server_persisted) {
+		ss_patch_row(cdt, cdn, {
+			qty: result.new_qty,
+			current_qty: result.new_qty,
+			amount: result.new_amount,
+			current_amount: result.new_amount,
+			serial_no: lots,
+			allow_zero_valuation_rate: 1,
+		});
+	} else {
+		frappe.model.set_value(cdt, cdn, "qty", result.new_qty);
+		frappe.model.set_value(cdt, cdn, "current_qty", result.new_qty);
+		frappe.model.set_value(cdt, cdn, "amount", result.new_amount);
+		frappe.model.set_value(cdt, cdn, "current_amount", result.new_amount);
+		ss_set_lots(cdt, cdn, lots, frm);
+		frappe.model.set_value(cdt, cdn, "allow_zero_valuation_rate", 1);
+		ss_apply_scan_metadata(cdt, cdn, result, locals[cdt][cdn], true);
+	}
 
 	frm.refresh_field("items");
 	frm.current_focused_row = row_idx;
@@ -297,6 +387,37 @@ function ss_handle_append_serial(frm, cdt, cdn, result, row_idx) {
 }
 
 function ss_handle_create_new_row(frm, result, warehouse) {
+	if (result.server_persisted) {
+		// Row already saved on server — reload once to pick up child name, then refocus
+		frm.reload_doc().then(() => {
+			let target = null;
+			if (result.row_name) {
+				target = frm.doc.items.find((r) => r.name === result.row_name);
+			}
+			if (!target && result.batch_no) {
+				target = frm.doc.items.find((r) => r.batch_no === result.batch_no);
+			}
+			const new_idx = target
+				? frm.doc.items.findIndex((r) => r.name === target.name)
+				: frm.doc.items.length - 1;
+			frm.current_focused_row = new_idx;
+			ss_highlight_row(frm, new_idx);
+			ss_scroll_to_row(frm, new_idx);
+			if (!ss_note_scan_and_maybe_save(frm, result)) {
+				ss_finish_scan(frm, result, {
+					message: `✓ ${result.item_name} | ${result.batch_no}`,
+					indicator: "green",
+				});
+			} else {
+				frappe.show_alert({
+					message: `✓ ${result.item_name} | ${result.batch_no}`,
+					indicator: "green",
+				});
+			}
+		});
+		return;
+	}
+
 	const new_row = frm.add_child("items", {
 		item_code: result.item_code,
 		item_name: result.item_name,
@@ -332,13 +453,24 @@ function ss_handle_move_to_existing(frm, result) {
 	const cdt = target_row.doctype;
 	const cdn = target_row.name;
 
-	if (result.serial_no) {
+	if (result.server_persisted) {
+		const lots = result.all_dispensing_lots || result.all_serials || target_row.serial_no;
+		ss_patch_row(cdt, cdn, {
+			qty: result.new_qty != null ? result.new_qty : target_row.qty,
+			current_qty: result.new_qty != null ? result.new_qty : target_row.current_qty,
+			amount: result.new_amount != null ? result.new_amount : target_row.amount,
+			current_amount:
+				result.new_amount != null ? result.new_amount : target_row.current_amount,
+			serial_no: lots,
+			allow_zero_valuation_rate: 1,
+		});
+	} else if (result.serial_no) {
 		const updated = ss_append_lot(target_row.serial_no, result.serial_no);
 		if (updated !== (target_row.serial_no || "")) {
 			ss_set_lots(cdt, cdn, updated, frm);
 		}
+		ss_apply_scan_metadata(cdt, cdn, result, target_row, true);
 	}
-	ss_apply_scan_metadata(cdt, cdn, result, target_row, true);
 
 	frm.refresh_field("items");
 	frm.current_focused_row = target_idx;
@@ -463,6 +595,7 @@ function show_create_stock_recon_dialog(frm) {
 frappe.ui.form.on("Stock Scanner", {
 	onload(frm) {
 		frm.current_focused_row = null;
+		frm.ss_scans_since_save = 0;
 		ss_inject_highlight_style();
 		setTimeout(() => ss_setup_row_click_tracking(frm), 500);
 	},

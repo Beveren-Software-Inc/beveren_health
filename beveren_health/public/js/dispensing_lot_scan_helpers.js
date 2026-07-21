@@ -30,7 +30,7 @@ beveren_health.dispensing_lot_scan.count_lots = function (value) {
 	return beveren_health.dispensing_lot_scan.split_lots(value).length;
 };
 
-beveren_health.dispensing_lot_scan.set_lots = function (cdt, cdn, value, frm) {
+beveren_health.dispensing_lot_scan.set_lots = function (cdt, cdn, value, frm, callback) {
 	frappe.model.set_value(
 		cdt,
 		cdn,
@@ -39,20 +39,26 @@ beveren_health.dispensing_lot_scan.set_lots = function (cdt, cdn, value, frm) {
 		() => {
 			const form = frm || frappe.get_cur_frm?.() || (typeof cur_frm !== "undefined" ? cur_frm : null);
 			if (form) {
-				beveren_health.dispensing_lot_scan.sync_qty_from_lots(form, cdt, cdn);
+				beveren_health.dispensing_lot_scan.sync_qty_from_lots(form, cdt, cdn, callback);
+			} else if (callback) {
+				callback();
 			}
 		}
 	);
 };
 
 /** Recalculate row qty from the number of dispensing lots (like standard serial_no). */
-beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn) {
+beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn, callback) {
 	const row = locals[cdt][cdn];
 	if (!row) {
+		if (callback) {
+			callback();
+		}
 		return;
 	}
 
 	let qty = beveren_health.dispensing_lot_scan.count_lots(row.custom_dispensing_lot);
+	const row_qty = flt(row.qty);
 	const rate = flt(row.rate);
 	const basic_rate = flt(row.basic_rate);
 
@@ -63,14 +69,30 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn)
 		frm.doc.purpose === "Material Transfer"
 	) {
 		qty = qty > 0 ? 1 : 0;
+	} else if (qty <= 1 && row_qty > 0) {
+		// Single partial pack — keep fractional qty from the row
+		qty = row_qty;
 	}
 
 	if (cdt === "Stock Reconciliation Item") {
-		frappe.model.set_value(cdt, cdn, "qty", qty);
-		frappe.model.set_value(cdt, cdn, "current_qty", qty);
-		frappe.model.set_value(cdt, cdn, "amount", qty * rate);
-		frappe.model.set_value(cdt, cdn, "current_amount", qty * rate);
-		frappe.model.set_value(cdt, cdn, "allow_zero_valuation_rate", 1);
+		const rate = flt(row.valuation_rate) || flt(row.current_valuation_rate);
+		const amount = qty * rate;
+		frappe.model.set_value(
+			cdt,
+			cdn,
+			{
+				qty: qty,
+				amount: amount,
+				quantity_difference: qty - flt(row.current_qty),
+				amount_difference: amount - flt(row.current_amount),
+				allow_zero_valuation_rate: 1,
+			},
+			() => {
+				if (callback) {
+					callback();
+				}
+			}
+		);
 	} else if (cdt === "Stock Entry Detail") {
 		frappe.model.set_value(cdt, cdn, "qty", qty);
 		frappe.model.set_value(cdt, cdn, "transfer_qty", qty);
@@ -79,6 +101,10 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn)
 	} else if (cdt === "Purchase Receipt Item") {
 		frappe.model.set_value(cdt, cdn, "qty", qty);
 		frappe.model.set_value(cdt, cdn, "amount", qty * rate);
+	}
+
+	if (callback && cdt !== "Stock Reconciliation Item") {
+		callback();
 	}
 };
 
