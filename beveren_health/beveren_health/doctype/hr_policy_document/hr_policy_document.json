@@ -1,0 +1,200 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "autoname": "field:policy_title",
+ "creation": "2026-07-20 10:39:07.690992",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "policy_title",
+  "policy_category",
+  "version",
+  "cb_head",
+  "effective_date",
+  "review_date",
+  "is_published",
+  "sec_doc",
+  "policy_document",
+  "summary",
+  "sec_scope",
+  "applies_to_all",
+  "department",
+  "cb_scope",
+  "designation",
+  "company",
+  "sec_ack",
+  "requires_acknowledgement",
+  "acknowledgement_deadline"
+ ],
+ "fields": [
+  {
+   "fieldname": "policy_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Policy Title",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "HR Policy",
+   "fieldname": "policy_category",
+   "fieldtype": "Select",
+   "in_standard_filter": 1,
+   "label": "Category",
+   "options": "HR Policy\nCode of Conduct\nClinical Policy\nSafety\nInfection Control\nQuality\nOther"
+  },
+  {
+   "default": "1.0",
+   "fieldname": "version",
+   "fieldtype": "Data",
+   "label": "Version"
+  },
+  {
+   "fieldname": "cb_head",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "effective_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective From",
+   "reqd": 1
+  },
+  {
+   "fieldname": "review_date",
+   "fieldtype": "Date",
+   "label": "Next Review"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_published",
+   "fieldtype": "Check",
+   "in_standard_filter": 1,
+   "label": "Published to Employees"
+  },
+  {
+   "fieldname": "sec_doc",
+   "fieldtype": "Section Break",
+   "label": "Document"
+  },
+  {
+   "fieldname": "policy_document",
+   "fieldtype": "Attach",
+   "in_list_view": 1,
+   "label": "Policy Document",
+   "reqd": 1
+  },
+  {
+   "fieldname": "summary",
+   "fieldtype": "Text Editor",
+   "label": "Summary"
+  },
+  {
+   "fieldname": "sec_scope",
+   "fieldtype": "Section Break",
+   "label": "Applies To"
+  },
+  {
+   "default": "1",
+   "fieldname": "applies_to_all",
+   "fieldtype": "Check",
+   "label": "All Employees"
+  },
+  {
+   "depends_on": "eval:!doc.applies_to_all",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Department"
+  },
+  {
+   "fieldname": "cb_scope",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:!doc.applies_to_all",
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation"
+  },
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company"
+  },
+  {
+   "fieldname": "sec_ack",
+   "fieldtype": "Section Break",
+   "label": "Acknowledgement"
+  },
+  {
+   "default": "1",
+   "fieldname": "requires_acknowledgement",
+   "fieldtype": "Check",
+   "label": "Requires Acknowledgement"
+  },
+  {
+   "depends_on": "requires_acknowledgement",
+   "fieldname": "acknowledgement_deadline",
+   "fieldtype": "Date",
+   "label": "Acknowledge By"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-20 10:39:07.690992",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "HR Policy Document",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR User",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "policy_title",
+ "track_changes": 1
+}

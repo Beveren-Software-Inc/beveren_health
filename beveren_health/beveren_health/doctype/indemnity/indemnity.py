@@ -92,6 +92,16 @@ class Indemnity(AccountsController):
             frappe.throw(_("Indemnity Cutoff Date is not configured. Please set it in HR Settings."))
 
     def _compute_salaries(self):
+        # Historical settlements carry their own contractual figures. Both fields
+        # are read_only on the form, so the UI never supplies them and the
+        # assignment lookup below still runs for anything created by hand. When
+        # they ARE supplied - a back-dated import for someone who already left,
+        # whose contract may predate any Salary Structure Assignment - the
+        # supplied figures are authoritative and must not be recomputed from a
+        # structure that does not reflect that contract.
+        if flt(self.base_salary) and flt(self.basic_salary):
+            return
+
         assignment = frappe.db.get_value(
             "Salary Structure Assignment",
             {"employee": self.employee, "docstatus": 1},
@@ -100,7 +110,12 @@ class Indemnity(AccountsController):
             as_dict=True,
         )
         if not assignment:
-            frappe.throw(_("No active Salary Structure Assignment found for employee {0}.").format(self.employee))
+            frappe.throw(
+                _(
+                    "No active Salary Structure Assignment found for employee {0}, "
+                    "and no base/basic salary was supplied on this document."
+                ).format(self.employee)
+            )
 
         base = flt(assignment.base)
         self.base_salary = base

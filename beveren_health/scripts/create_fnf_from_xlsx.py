@@ -20,10 +20,15 @@ COMPANY = "Serene Psychiatry Hospital"
 CURRENCY = "BHD"
 COST_CENTER = "Serene Hospital - SPH"
 CUTOFF_DATE = "2024-03-01"
-INDEMNITY_EXPENSE_ACCOUNT = "Salary - SPH"
-INDEMNITY_PAYABLE_ACCOUNT = "Employee Benefits Obligation - SPH"
-PAYROLL_PAYABLE_ACCOUNT = "Payroll Payable - SPH"
-SALARY_EXPENSE_ACCOUNT = "Salary - SPH"
+
+# This site runs a numbered Bahraini chart of accounts, not ERPNext's default
+# names. The previous values ("Salary - SPH", "Employee Benefits Obligation - SPH",
+# "Payroll Payable - SPH") do not exist here, so every insert failed on link
+# validation. Indemnity expense is posted to direct staff by decision.
+INDEMNITY_EXPENSE_ACCOUNT = "05-01-03-0002 - INDEMNITY-DIRECT STAFF - SPH"
+INDEMNITY_PAYABLE_ACCOUNT = "02-01-09-0001 - PROVISION FOR INDEMNITY - SPH"
+PAYROLL_PAYABLE_ACCOUNT = "02-01-10-0005 - SALARY PAYABLE - SPH"
+SALARY_EXPENSE_ACCOUNT = "05-03-01-0001 - PAYROLL - BASIC SALARY - SPH"
 
 
 # ── Raw data extracted from xlsx ──────────────────────────────────────────────
@@ -332,6 +337,64 @@ def _set_hr_settings():
     _log("✓ HR Settings: indemnity accounts and cutoff date configured")
 
 
+def _ensure_designation(designation):
+	"""Designation is mandatory on Employee; create any that is not on file."""
+	if not designation or frappe.db.exists("Designation", designation):
+		return designation
+	doc = frappe.new_doc("Designation")
+	doc.designation_name = designation
+	doc.insert(ignore_permissions=True)
+	_log(f"  + Designation '{designation}' created")
+	return designation
+
+
+def _ensure_employee(data):
+	"""Create the leaver if they are not on file yet.
+
+	run() previously assumed all 16 already existed; none did, so every FnF
+	failed on "Could not find Employee". FNF_DATA carries code, dates,
+	department, designation and nationality - but no person name, date of
+	birth, gender or CPR number. Those are left BLANK rather than invented:
+	fabricating HR identity data would be worse than an incomplete record.
+	Employee names are set explicitly because the S.###. series is at S003 and
+	would otherwise allocate S004 instead of S059.
+	"""
+	code = data["employee"]
+	if frappe.db.exists("Employee", code):
+		return code
+
+	doc = frappe.new_doc("Employee")
+	doc.update(
+		{
+			"employee_name": code,  # placeholder - real name to be filled by HR
+			"company": COMPANY,
+			"status": "Left",
+			"date_of_joining": getdate(data["date_of_joining"]),
+			"relieving_date": getdate(data["relieving_date"]),
+			"department": data.get("department"),
+			"designation": data.get("designation"),
+			"payroll_cost_center": COST_CENTER,
+		}
+	)
+	# Nationality is a Link on some installs and free text on others - only set
+	# it when the field exists and any linked master row is present.
+	nationality = data.get("nationality")
+	if nationality:
+		meta_field = frappe.get_meta("Employee").get_field("custom_nationality") or \
+			frappe.get_meta("Employee").get_field("nationality")
+		if meta_field:
+			if meta_field.fieldtype != "Link" or frappe.db.exists(meta_field.options, nationality):
+				doc.set(meta_field.fieldname, nationality)
+
+	doc.flags.name_set = True
+	doc.name = code
+	doc.flags.ignore_permissions = True
+	doc.insert(ignore_permissions=True, ignore_mandatory=True)
+	_log(f"  + Employee {code} created ({data.get('designation')}, left {data['relieving_date']}) "
+	     f"- name/DOB/gender/CPR still blank")
+	return code
+
+
 def _create_indemnity(emp_data):
     """Create and submit an Indemnity doc for the employee."""
     employee = emp_data["employee"]
@@ -593,6 +656,21 @@ def run():
     errors = []
 
     for data in FNF_DATA:
+        # The employee is committed on its own. Creating it inside the FnF try
+        # meant a later failure rolled the employee back with it, so every run
+        # recreated and discarded the same 14 people.
+        try:
+            _ensure_designation(data.get("designation"))
+            _ensure_employee(data)
+            frappe.db.commit()
+        except Exception as e:
+            frappe.db.rollback()
+            import traceback
+            msg = f"ERROR creating employee {data['employee']}: {e}\n{traceback.format_exc()}"
+            _log(msg)
+            errors.append(msg)
+            continue
+
         try:
             fnf_name = _process_fnf(data)
             created.append(fnf_name)
