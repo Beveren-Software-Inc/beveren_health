@@ -106,7 +106,9 @@ function process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
         document_name: frm.doc.name,
         doctype: 'Purchase Receipt',
         current_item_code: row.item_code,
-        current_batch_no: row.batch_no || ''
+        current_batch_no: row.batch_no || '',
+		current_row_name: row.name,
+		warehouse: row.warehouse || frm.doc.set_warehouse || '',
     },
             callback: function(r) {
                 if (!r.message || !r.message.success) {
@@ -143,9 +145,11 @@ function process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
                         break;
                 }
                 
-                // ─── SAVE AND RETURN CURSOR ─────────────────────────────────────
-                // After any successful scan, save the document and refocus
-                save_and_refocus_scanner(frm, result);
+                beveren_health.auto_save_scan.after_successful_scan(
+					frm,
+					result,
+					refocus_scanner_field
+				);
             },
             error: function(err) {
                 console.error('Scan error:', err);
@@ -158,27 +162,7 @@ function process_pr_scan(frm, cdt, cdn, row, barcode, current_row_idx) {
 // ─── Save and refocus function ───────────────────────────────────────────────
 
 function save_and_refocus_scanner(frm, result) {
-    // Show saving indicator
-    frappe.show_alert({ message: __('Saving...'), indicator: 'blue' });
-    
-    // Save the document
-    frm.save_or_update({
-        callback: function() {
-            frappe.show_alert({ message: __('Saved successfully'), indicator: 'green', timeout: 1 });
-            
-            // After save, refocus on the appropriate scanner field
-            setTimeout(function() {
-                refocus_scanner_field(frm, result);
-            }, 300);
-        },
-        error: function() {
-            frappe.msgprint({
-                title: __('Save Error'),
-                indicator: 'red',
-                message: __('Failed to save document. Please check and save manually.')
-            });
-        }
-    });
+	beveren_health.auto_save_scan.save_and_refocus(frm, result, refocus_scanner_field);
 }
 
 function refocus_scanner_field(frm, result) {
@@ -255,144 +239,209 @@ function refocus_scanner_field(frm, result) {
 // ─── Case 1 ───────────────────────────────────────────────────────────────────
 
 function handle_assign_to_current(frm, cdt, cdn, result, row_idx) {
-    frappe.model.set_value(cdt, cdn, 'item_code', result.item_code);
-    frappe.model.set_value(cdt, cdn, 'item_name', result.item_name);
-    frappe.model.set_value(cdt, cdn, 'use_serial_batch_fields', 1);
-    if (result.uom) {
-        frappe.model.set_value(cdt, cdn, 'uom', result.uom);
-    }
-    frappe.model.set_value(cdt, cdn, 'batch_no', result.batch_no);
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+			item_code: result.item_code,
+			item_name: result.item_name,
+			use_serial_batch_fields: 1,
+			uom: result.uom || locals[cdt][cdn].uom,
+			batch_no: result.batch_no,
+			qty: result.qty || 1,
+			received_qty: result.received_qty != null ? result.received_qty : result.qty || 1,
+			rate: result.rate || 0,
+			amount: result.amount || 0,
+			custom_dispensing_lot: result.serial_no || "",
+			custom_expiry_date: result.expiry_date || "",
+			custom_manufacturing_date: result.mfg_date || "",
+			custom_gstin: result.gtin || "",
+		});
+	} else {
+		frappe.model.set_value(cdt, cdn, "item_code", result.item_code);
+		frappe.model.set_value(cdt, cdn, "item_name", result.item_name);
+		frappe.model.set_value(cdt, cdn, "use_serial_batch_fields", 1);
+		if (result.uom) {
+			frappe.model.set_value(cdt, cdn, "uom", result.uom);
+		}
+		frappe.model.set_value(cdt, cdn, "batch_no", result.batch_no);
 
-    if (result.serial_no) {
-        beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, result.serial_no, frm);
-    } else {
-        frappe.model.set_value(cdt, cdn, 'qty', 1);
-    }
-    if (result.expiry_date) {
-        frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
-    }
-    if (result.gtin){
-        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
-    }
-    if (result.mfg_date) {
-        frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
-    }
+		if (result.serial_no) {
+			beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, result.serial_no, frm);
+		} else {
+			frappe.model.set_value(cdt, cdn, "qty", 1);
+		}
+		if (result.expiry_date) {
+			frappe.model.set_value(cdt, cdn, "custom_expiry_date", result.expiry_date);
+		}
+		if (result.gtin) {
+			frappe.model.set_value(cdt, cdn, "custom_gstin", result.gtin);
+		}
+		if (result.mfg_date) {
+			frappe.model.set_value(cdt, cdn, "custom_manufacturing_date", result.mfg_date);
+		}
+	}
 
-    frm.refresh_field('items');
-    frm.current_focused_row = row_idx;
-    highlight_row(frm, row_idx);
-    scroll_to_row(frm, row_idx);
+	frm.refresh_field("items");
+	frm.current_focused_row = row_idx;
+	highlight_row(frm, row_idx);
+	scroll_to_row(frm, row_idx);
 
-    frappe.show_alert({
-        message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${result.serial_no || 'N/A'}`,
-        indicator: 'green'
-    });
+	frappe.show_alert({
+		message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
+		indicator: "green",
+	});
 }
 
 
 // ─── Case 2 ───────────────────────────────────────────────────────────────────
 
 function handle_append_serial(frm, cdt, cdn, result, row_idx) {
-    // Server already persisted qty + serial — sync form model to match
-    frappe.model.set_value(cdt, cdn, 'qty', result.new_qty);
-    frappe.model.set_value(cdt, cdn, 'amount', result.new_amount);
-    beveren_health.dispensing_lot_scan.set_lots(
-        cdt,
-        cdn,
-        result.all_dispensing_lots || result.all_serials
-    );
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+			qty: result.new_qty,
+			received_qty: result.received_qty != null ? result.received_qty : result.new_qty,
+			amount: result.new_amount,
+			custom_dispensing_lot: result.all_dispensing_lots || result.all_serials || "",
+		});
+	} else {
+		frappe.model.set_value(cdt, cdn, "qty", result.new_qty);
+		frappe.model.set_value(cdt, cdn, "amount", result.new_amount);
+		beveren_health.dispensing_lot_scan.set_lots(
+			cdt,
+			cdn,
+			result.all_dispensing_lots || result.all_serials
+		);
+	}
 
-    frm.refresh_field('items');
-    frm.current_focused_row = row_idx;
-    highlight_row(frm, row_idx);
-    scroll_to_row(frm, row_idx);
+	frm.refresh_field("items");
+	frm.current_focused_row = row_idx;
+	highlight_row(frm, row_idx);
+	scroll_to_row(frm, row_idx);
 
-    frappe.show_alert({
-        message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
-        indicator: 'green'
-    });
+	frappe.show_alert({
+		message: `✓ Serial appended | Batch: ${result.batch_no} | Qty: ${result.new_qty}`,
+		indicator: "green",
+	});
 }
 
 
 // ─── Case 3 ───────────────────────────────────────────────────────────────────
 
 function handle_create_new_row(frm, result) {
-    // Add a brand-new child row for the different batch
-    let new_row = frm.add_child('items', {
-        item_code: result.item_code,
-        item_name: result.item_name,
-        qty: result.qty || 1,
-        use_serial_batch_fields: 1,
-        uom: result.uom,
-        rate: result.rate || 0,
-        amount: result.amount || 0,
-        batch_no: result.batch_no,
-        custom_dispensing_lot: result.serial_no || '',
-        custom_expiry_date: result.expiry_date || '',
-        custom_manufacturing_date: result.mfg_date || '',
-        custom_gstin: result.gtin || ''
-    });
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.after_server_created_row(
+			frm,
+			result,
+			refocus_scanner_field,
+			() => {
+				let target = null;
+				if (result.row_name) {
+					target = frm.doc.items.find((r) => r.name === result.row_name);
+				}
+				if (!target && result.batch_no) {
+					target = frm.doc.items.find((r) => r.batch_no === result.batch_no);
+				}
+				const new_idx = target
+					? frm.doc.items.findIndex((r) => r.name === target.name)
+					: frm.doc.items.length - 1;
+				frm.current_focused_row = new_idx;
+				highlight_row(frm, new_idx);
+				scroll_to_row(frm, new_idx);
+			}
+		);
+		return;
+	}
 
-    frm.refresh_field('items');
+	let new_row = frm.add_child("items", {
+		item_code: result.item_code,
+		item_name: result.item_name,
+		qty: result.qty || 1,
+		use_serial_batch_fields: 1,
+		uom: result.uom,
+		rate: result.rate || 0,
+		amount: result.amount || 0,
+		batch_no: result.batch_no,
+		custom_dispensing_lot: result.serial_no || "",
+		custom_expiry_date: result.expiry_date || "",
+		custom_manufacturing_date: result.mfg_date || "",
+		custom_gstin: result.gtin || "",
+		received_qty: result.received_qty != null ? result.received_qty : result.qty || 1,
+	});
 
-    let new_idx = frm.doc.items.findIndex(r => r.name === new_row.name);
-    frm.current_focused_row = new_idx;
-    highlight_row(frm, new_idx);
-    scroll_to_row(frm, new_idx);
+	frm.refresh_field("items");
 
-    frappe.show_alert({
-        message: `✓ New row created | Batch: ${result.batch_no} | SN: ${result.serial_no || 'N/A'}`,
-        indicator: 'orange'
-    });
+	let new_idx = frm.doc.items.findIndex((r) => r.name === new_row.name);
+	frm.current_focused_row = new_idx;
+	highlight_row(frm, new_idx);
+	scroll_to_row(frm, new_idx);
+
+	frappe.show_alert({
+		message: `✓ New row created | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
+		indicator: "orange",
+	});
 }
 
 
 // ─── Case 4 ───────────────────────────────────────────────────────────────────
 
 function handle_move_to_existing(frm, result) {
-    let target_idx = result.existing_row_index;
-    let target_row = frm.doc.items[target_idx];
+	let target_idx = result.existing_row_index;
+	let target_row = frm.doc.items[target_idx];
 
-    if (target_row) {
-        let cdt = target_row.doctype;
-        let cdn = target_row.name;
+	if (target_row) {
+		let cdt = target_row.doctype;
+		let cdn = target_row.name;
 
-        // Append serial if not already present
-        if (result.serial_no) {
-            let updated_lots = beveren_health.dispensing_lot_scan.append_lot(
-                target_row.custom_dispensing_lot,
-                result.serial_no
-            );
-            if (updated_lots !== (target_row.custom_dispensing_lot || "")) {
-                beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, updated_lots);
+		if (result.server_persisted) {
+			beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+				qty: result.new_qty != null ? result.new_qty : target_row.qty,
+				received_qty:
+					result.received_qty != null
+						? result.received_qty
+						: result.new_qty != null
+							? result.new_qty
+							: target_row.received_qty,
+				amount: result.new_amount != null ? result.new_amount : target_row.amount,
+				custom_dispensing_lot:
+					result.all_dispensing_lots ||
+					result.all_serials ||
+					target_row.custom_dispensing_lot,
+			});
+		} else if (result.serial_no) {
+			let updated_lots = beveren_health.dispensing_lot_scan.append_lot(
+				target_row.custom_dispensing_lot,
+				result.serial_no
+			);
+			if (updated_lots !== (target_row.custom_dispensing_lot || "")) {
+				beveren_health.dispensing_lot_scan.set_lots(cdt, cdn, updated_lots);
 
-                let serial_count = beveren_health.dispensing_lot_scan.count_lots(updated_lots);
-                frappe.model.set_value(cdt, cdn, 'qty', serial_count);
-                frappe.model.set_value(cdt, cdn, 'amount', serial_count * (target_row.rate || 0));
-            }
-        }
+				let serial_count = beveren_health.dispensing_lot_scan.count_lots(updated_lots);
+				frappe.model.set_value(cdt, cdn, "qty", serial_count);
+				frappe.model.set_value(cdt, cdn, "amount", serial_count * (target_row.rate || 0));
+			}
+		}
 
-        // Fill dates if not already set
-        if (result.expiry_date && !target_row.custom_expiry_date) {
-            frappe.model.set_value(cdt, cdn, 'custom_expiry_date', result.expiry_date);
-        }
-        if (result.gtin){
-        frappe.model.set_value(cdt, cdn, 'custom_gstin', result.gtin);
-    }
-        if (result.mfg_date && !target_row.custom_manufacturing_date) {
-            frappe.model.set_value(cdt, cdn, 'custom_manufacturing_date', result.mfg_date);
-        }
-    }
+		if (!result.server_persisted) {
+			if (result.expiry_date && !target_row.custom_expiry_date) {
+				frappe.model.set_value(cdt, cdn, "custom_expiry_date", result.expiry_date);
+			}
+			if (result.gtin) {
+				frappe.model.set_value(cdt, cdn, "custom_gstin", result.gtin);
+			}
+			if (result.mfg_date && !target_row.custom_manufacturing_date) {
+				frappe.model.set_value(cdt, cdn, "custom_manufacturing_date", result.mfg_date);
+			}
+		}
+	}
 
-    frm.refresh_field('items');
-    frm.current_focused_row = target_idx;
-    highlight_row(frm, target_idx);
-    scroll_to_row(frm, target_idx);
+	frm.refresh_field("items");
+	frm.current_focused_row = target_idx;
+	highlight_row(frm, target_idx);
+	scroll_to_row(frm, target_idx);
 
-    frappe.show_alert({
-        message: `↗ Moved to existing batch: ${result.batch_no}`,
-        indicator: 'blue'
-    });
+	frappe.show_alert({
+		message: `↗ Moved to existing batch: ${result.batch_no}`,
+		indicator: "blue",
+	});
 }
 
 

@@ -29,6 +29,7 @@ app_license = "mit"
 app_include_js = [
 	"/assets/beveren_health/js/dispensing_lot_scan_helpers.js",
 	"/assets/beveren_health/js/warehouse_cost_center.js",
+	"/assets/beveren_health/js/auto_save_scan.js",
 ]
 
 # include js, css files in header of web template
@@ -482,6 +483,9 @@ fixtures = [
                 "Delivery Note Item-custom_section_break_o7y1z",
                 "Delivery Note Item-custom_dispensing_lot",
                 "Warehouse-custom_cost_center",
+                "Purchase Receipt-custom_auto_save_scan_interval",
+                "Stock Entry-custom_auto_save_scan_interval",
+                "Stock Reconciliation-custom_auto_save_scan_interval",
             ]]
         ]
     }
