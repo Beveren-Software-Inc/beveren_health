@@ -202,52 +202,24 @@ function ss_patch_row(cdt, cdn, values) {
 const SS_SAVE_EVERY_N_SCANS_DEFAULT = 10;
 
 function ss_get_auto_save_interval(frm) {
-	const n = cint(frm.doc.auto_save_scan_interval);
-	return n > 0 ? n : SS_SAVE_EVERY_N_SCANS_DEFAULT;
+	return beveren_health.auto_save_scan.get_interval(frm);
 }
 
 function ss_finish_scan(frm, result, opts) {
-	opts = opts || {};
-	if (opts.message) {
-		frappe.show_alert({
-			message: opts.message,
-			indicator: opts.indicator || "green",
-			timeout: 1.5,
-		});
-	}
-	// Immediate refocus — no full save wait on the fast path
-	ss_refocus_scanner_field(frm, result);
+	beveren_health.auto_save_scan.finish_scan(frm, result, ss_refocus_scanner_field, opts);
 }
 
 function ss_save_and_refocus(frm, result) {
-	frm.save_or_update({
-		callback() {
-			frm.ss_scans_since_save = 0;
-			frappe.show_alert({
-				message: __("Saved"),
-				indicator: "green",
-				timeout: 1,
-			});
-			setTimeout(() => ss_refocus_scanner_field(frm, result), 300);
-		},
-		error() {
-			frappe.msgprint({
-				title: __("Save Error"),
-				indicator: "red",
-				message: __("Failed to save. Please save manually and try again."),
-			});
-		},
-	});
+	beveren_health.auto_save_scan.save_and_refocus(frm, result, ss_refocus_scanner_field);
 }
 
 /** Count successful scans; every N scans do a full document save. Returns true if save started. */
 function ss_note_scan_and_maybe_save(frm, result) {
-	frm.ss_scans_since_save = (frm.ss_scans_since_save || 0) + 1;
-	if (frm.ss_scans_since_save < ss_get_auto_save_interval(frm)) {
-		return false;
-	}
-	ss_save_and_refocus(frm, result);
-	return true;
+	return beveren_health.auto_save_scan.note_scan_and_maybe_save(
+		frm,
+		result,
+		ss_refocus_scanner_field
+	);
 }
 
 function ss_process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {

@@ -90,6 +90,59 @@ def _apply_parsed_metadata(update_values, row, parsed, config, only_if_empty=Fal
         update_values[mfg_field] = mfg_val
 
 
+FAST_PERSIST_DOCTYPES = frozenset(
+	{
+		"Stock Scanner",
+		"Purchase Receipt",
+		"Stock Entry",
+		"Stock Reconciliation",
+	}
+)
+
+
+def _stock_entry_warehouse_values(doc, warehouse):
+	"""Map transfer warehouse onto Stock Entry Detail s/t warehouse fields."""
+	if not doc or doc.doctype != "Stock Entry":
+		return {}
+
+	purpose = doc.get("purpose")
+	values = {}
+	if purpose in ("Material Receipt", "Manufacture", "Repack"):
+		if warehouse:
+			values["t_warehouse"] = warehouse
+	elif purpose in ("Material Issue", "Material Transfer for Manufacture"):
+		if warehouse:
+			values["s_warehouse"] = warehouse
+	elif purpose == "Material Transfer":
+		values["s_warehouse"] = doc.get("from_warehouse") or warehouse
+		values["t_warehouse"] = doc.get("to_warehouse") or warehouse
+	elif warehouse:
+		values["t_warehouse"] = warehouse
+	return values
+
+
+def _apply_purchase_receipt_qty_fields(update_values, qty, row=None, child_doctype=None):
+	"""Keep received_qty / stock qtys aligned with accepted qty for Purchase Receipt Item."""
+	from frappe.utils import flt
+
+	meta = frappe.get_meta(child_doctype or "Purchase Receipt Item")
+	if not meta.has_field("received_qty"):
+		return
+
+	rejected = flt(row.get("rejected_qty")) if row else 0
+	received_qty = flt(qty) + rejected
+	update_values["received_qty"] = received_qty
+
+	conversion_factor = 1.0
+	if row and row.get("conversion_factor"):
+		conversion_factor = flt(row.get("conversion_factor")) or 1.0
+
+	if meta.has_field("stock_qty"):
+		update_values["stock_qty"] = flt(qty) * conversion_factor
+	if meta.has_field("received_stock_qty"):
+		update_values["received_stock_qty"] = received_qty * conversion_factor
+
+
 def _buying_rate(item_code):
 	return (
 		frappe.db.get_value(
@@ -127,7 +180,7 @@ def process_batch_scan(
             }
         
         config = DOCTYPE_CONFIG[doctype]
-        fast_persist = doctype == "Stock Scanner"
+        fast_persist = doctype in FAST_PERSIST_DOCTYPES
         
         # Parse barcode
         parsed = parse_barcode(barcode_data)
@@ -212,6 +265,7 @@ def process_batch_scan(
                     warehouse,
                     row_name=current_row_name if fast_persist else None,
                     persist=fast_persist,
+                    doc=doc if fast_persist else None,
                 )
     
     except Exception as e:
@@ -221,7 +275,7 @@ def process_batch_scan(
 # ─── Action helpers ───────────────────────────────────────────────────────────
 
 def assign_to_current_row(
-	config, item, parsed, warehouse=None, row_name=None, persist=False
+	config, item, parsed, warehouse=None, row_name=None, persist=False, doc=None
 ):
     """Case 1 – first scan on an empty row: assign batch + serial."""
     # batch already resolved in process_batch_scan
@@ -264,6 +318,20 @@ def assign_to_current_row(
             update_values[config["rate_field"]] = rate
         if warehouse and frappe.get_meta(config["child_doctype"]).has_field("warehouse"):
             update_values["warehouse"] = warehouse
+        update_values.update(_stock_entry_warehouse_values(doc, warehouse))
+        if config["child_doctype"] == "Purchase Receipt Item":
+            row_for_qty = None
+            if row_name:
+                row_for_qty = frappe.db.get_value(
+                    config["child_doctype"],
+                    row_name,
+                    ["rejected_qty", "conversion_factor"],
+                    as_dict=True,
+                )
+            _apply_purchase_receipt_qty_fields(
+                update_values, qty, row=row_for_qty, child_doctype=config["child_doctype"]
+            )
+            result["received_qty"] = update_values.get("received_qty", qty)
         for field, source_field in config.get("additional_fields", {}).items():
             if source_field == "qty":
                 update_values[field] = qty
@@ -333,6 +401,11 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
         elif source_field == "rate":
             update_values[field] = rate
 
+    if config["child_doctype"] == "Purchase Receipt Item":
+        _apply_purchase_receipt_qty_fields(
+            update_values, new_qty, row=row, child_doctype=config["child_doctype"]
+        )
+
     frappe.db.set_value(config["child_doctype"], row.name, update_values)
     # Keep in-memory row in sync for subsequent scans in the same request
     for key, value in update_values.items():
@@ -344,6 +417,7 @@ def append_dispensing_lot_to_row(doc, config, row, parsed, item):
         "row_name": row.name,
         "new_qty": new_qty,
         "new_amount": new_amount,
+        "received_qty": update_values.get("received_qty", new_qty),
         "serial_no": parsed.get("serial_no"),
         "dispensing_lot": parsed.get("serial_no"),
         "all_dispensing_lots": dispensing_lots,
@@ -490,6 +564,12 @@ def create_new_row(config, item, parsed, warehouse=None, doc=None):
             row_data[config["rate_field"]] = rate
         if warehouse and frappe.get_meta(config["child_doctype"]).has_field("warehouse"):
             row_data["warehouse"] = warehouse
+        row_data.update(_stock_entry_warehouse_values(doc, warehouse))
+        if config["child_doctype"] == "Purchase Receipt Item":
+            _apply_purchase_receipt_qty_fields(
+                row_data, qty, row=None, child_doctype=config["child_doctype"]
+            )
+            result["received_qty"] = row_data.get("received_qty", qty)
         for field, source_field in config.get("additional_fields", {}).items():
             if source_field == "qty":
                 row_data[field] = qty

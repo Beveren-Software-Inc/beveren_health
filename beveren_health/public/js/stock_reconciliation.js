@@ -267,6 +267,14 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 			let final_cdt = cdt;
 			let final_cdn = cdn;
 			const finish_scan = () => {
+				if (result.server_persisted) {
+					beveren_health.auto_save_scan.after_successful_scan(
+						frm,
+						result,
+						refocus_scanner_field
+					);
+					return;
+				}
 				sr_finalize_row(frm, final_cdt, final_cdn, () => {
 					save_and_refocus_scanner(frm, result);
 				});
@@ -280,9 +288,13 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 					handle_append_serial(frm, cdt, cdn, result, current_row_idx, finish_scan);
 					break;
 				case 'create_new_row': {
-					let new_row = handle_create_new_row(frm, result, warehouse, finish_scan);
-					final_cdt = new_row.doctype;
-					final_cdn = new_row.name;
+					if (result.server_persisted) {
+						handle_create_new_row(frm, result, warehouse, null);
+					} else {
+						let new_row = handle_create_new_row(frm, result, warehouse, finish_scan);
+						final_cdt = new_row.doctype;
+						final_cdn = new_row.name;
+					}
 					break;
 				}
 				case 'move_to_existing': {
@@ -307,23 +319,7 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 // ─── Save and refocus function ───────────────────────────────────────────────
 
 function save_and_refocus_scanner(frm, result) {
-    frm.save_or_update({
-        callback: function() {
-            frappe.show_alert({ message: __('Saved successfully'), indicator: 'green', timeout: 1 });
-            
-            // After save, refocus on the appropriate scanner field
-            setTimeout(function() {
-                refocus_scanner_field(frm, result);
-            }, 300);
-        },
-        error: function() {
-            frappe.msgprint({
-                title: __('Save Error'),
-                indicator: 'red',
-                message: __('Failed to save document. Please check and save manually.')
-            });
-        }
-    });
+	beveren_health.auto_save_scan.save_and_refocus(frm, result, refocus_scanner_field);
 }
 
 function refocus_scanner_field(frm, result) {
@@ -395,6 +391,34 @@ function refocus_scanner_field(frm, result) {
 // ─── Case 1 (mirrors Purchase Receipt + SR warehouse / scan_mode fields) ───
 
 function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse, on_complete) {
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+			item_code: result.item_code,
+			item_name: result.item_name,
+			use_serial_batch_fields: 1,
+			allow_zero_valuation_rate: 1,
+			batch_no: result.batch_no,
+			warehouse: warehouse,
+			qty: result.qty || 1,
+			valuation_rate: result.valuation_rate || result.rate || 0,
+			amount: result.amount || 0,
+			custom_dispensing_lot: result.serial_no || "",
+			custom_expiry_date: result.expiry_date || "",
+			custom_manufacturing_date: result.mfg_date || "",
+			custom_gstin: result.gtin || "",
+		});
+		frm.refresh_field("items");
+		frm.current_focused_row = row_idx;
+		highlight_row(frm, row_idx);
+		scroll_to_row(frm, row_idx);
+		frappe.show_alert({
+			message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
+			indicator: "green",
+		});
+		on_complete && on_complete();
+		return;
+	}
+
 	sr_apply_scan_fields(frm, cdt, cdn, result, warehouse, () => {
 		frm.refresh_field("items");
 		frm.current_focused_row = row_idx;
@@ -414,6 +438,26 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse, on_
 // ─── Case 2 (mirrors Purchase Receipt) ───────────────────────────────────────
 
 function handle_append_serial(frm, cdt, cdn, result, row_idx, on_complete) {
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+			qty: result.new_qty,
+			amount: result.new_amount,
+			allow_zero_valuation_rate: 1,
+			custom_dispensing_lot: result.all_dispensing_lots || result.all_serials || "",
+			custom_gstin: result.gtin || locals[cdt][cdn].custom_gstin,
+		});
+		frm.refresh_field("items");
+		frm.current_focused_row = row_idx;
+		highlight_row(frm, row_idx);
+		scroll_to_row(frm, row_idx);
+		frappe.show_alert({
+			message: `✓ Serial appended | Batch: ${result.batch_no}`,
+			indicator: "green",
+		});
+		on_complete && on_complete();
+		return;
+	}
+
 	sr_prepare_for_scan(frm);
 	beveren_health.dispensing_lot_scan.set_lots(
 		cdt,
@@ -449,6 +493,30 @@ function handle_append_serial(frm, cdt, cdn, result, row_idx, on_complete) {
 // ─── Case 3 (mirrors Purchase Receipt + SR warehouse) ──────────────────────
 
 function handle_create_new_row(frm, result, warehouse, on_complete) {
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.after_server_created_row(
+			frm,
+			result,
+			refocus_scanner_field,
+			() => {
+				let target = null;
+				if (result.row_name) {
+					target = frm.doc.items.find((r) => r.name === result.row_name);
+				}
+				if (!target && result.batch_no) {
+					target = frm.doc.items.find((r) => r.batch_no === result.batch_no);
+				}
+				const new_idx = target
+					? frm.doc.items.findIndex((r) => r.name === target.name)
+					: frm.doc.items.length - 1;
+				frm.current_focused_row = new_idx;
+				highlight_row(frm, new_idx);
+				scroll_to_row(frm, new_idx);
+			}
+		);
+		return { doctype: "Stock Reconciliation Item", name: result.row_name || "" };
+	}
+
 	sr_prepare_for_scan(frm);
 
 	let new_row = frm.add_child("items", {
@@ -515,6 +583,20 @@ function handle_move_to_existing(frm, result, on_complete) {
 
 		on_complete && on_complete();
 	};
+
+	if (result.server_persisted) {
+		beveren_health.auto_save_scan.patch_row(cdt, cdn, {
+			qty: result.new_qty != null ? result.new_qty : target_row.qty,
+			amount: result.new_amount != null ? result.new_amount : target_row.amount,
+			allow_zero_valuation_rate: 1,
+			custom_dispensing_lot:
+				result.all_dispensing_lots ||
+				result.all_serials ||
+				target_row.custom_dispensing_lot,
+		});
+		finish();
+		return { cdt: cdt, cdn: cdn };
+	}
 
 	if (result.serial_no) {
 		let updated_lots = beveren_health.dispensing_lot_scan.append_lot(

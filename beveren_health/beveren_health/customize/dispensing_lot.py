@@ -278,7 +278,7 @@ def _validate_lot_eligible_for_transfer(lot, serial_no):
 
 
 def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
-	"""Move an existing pack (full serial) to the target warehouse — no qty In/Out."""
+	"""Move an existing pack to the target warehouse, or create it there if missing."""
 	dest_wh = row.get("t_warehouse")
 	source_wh = row.get("s_warehouse")
 
@@ -291,11 +291,8 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 
 	lot_name = _get_lot_name_by_serial(serial_no)
 	if not lot_name:
-		frappe.throw(
-			_("Dispensing Lot not found for serial {0}. Receive the pack before transferring.").format(
-				serial_no
-			)
-		)
+		# First time seeing this serial on transfer — create the lot at destination
+		return _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh)
 
 	lot = frappe.get_doc("Dispensing Lot", lot_name)
 	_validate_lot_eligible_for_transfer(lot, serial_no)
@@ -324,6 +321,65 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 		reference_name=doc.name,
 		posting_date=posting_date,
 		remarks=_("Transferred from {0} to {1}").format(source_wh or "—", dest_wh),
+	)
+	return lot.name
+
+
+def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh):
+	"""Create a Dispensing Lot at the transfer destination when the serial is new."""
+	if not row.item_code or not row.batch_no:
+		frappe.throw(
+			_(
+				"Item and Batch are required to create Dispensing Lot for serial {0} on transfer."
+			).format(serial_no)
+		)
+
+	_validate_stock_row_batch_item(row)
+
+	serials = _serials_from_stock_row(row)
+	row_stock_qty = flt(row.get("qty")) or len(serials) or 1
+	lot_quantities = compute_dispensing_qty_per_serial(
+		row_stock_qty, serials, item_code=row.item_code
+	)
+
+	try:
+		lot_qty = lot_quantities[serials.index(serial_no)]
+	except (ValueError, IndexError):
+		lot_qty = lot_quantities[0] if lot_quantities else 1
+
+	_pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
+	gtin = row.get("custom_gstin") or frappe.db.get_value(
+		"Item", row.item_code, "custom_gtin_number"
+	)
+	posting_date = doc.get("posting_date") or frappe.utils.today()
+
+	lot_name = _create_dispensing_lot_if_missing(
+		item=row.item_code,
+		batch_no=row.batch_no,
+		serial_no=serial_no,
+		warehouse=dest_wh,
+		lot_qty=lot_qty,
+		dispensing_uom=dispensing_uom,
+		gtin=gtin,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+		posting_date=posting_date,
+		row_idx=row.idx,
+	)
+
+	lot = frappe.get_doc("Dispensing Lot", lot_name)
+	if _lot_has_reference_transaction(lot, doc.doctype, doc.name, "Transfer"):
+		return lot.name
+
+	_append_lot_transaction(
+		lot,
+		transaction_type="Transfer",
+		qty=0,
+		uom=lot.uom,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+		posting_date=posting_date,
+		remarks=_("Created on transfer from {0} to {1}").format(source_wh or "—", dest_wh),
 	)
 	return lot.name
 
@@ -396,7 +452,7 @@ def _stock_entry_line_needs_dispensing_lot(doc, row):
 
 
 def validate_stock_entry_dispensing_lots(doc, method=None):
-	"""Require lots on flagged items; block partial pack transfer."""
+	"""Require lots on flagged items; block partial pack transfer when lot already exists."""
 	for row in doc.get("items") or []:
 		if not row.item_code:
 			continue
@@ -413,11 +469,8 @@ def validate_stock_entry_dispensing_lots(doc, method=None):
 		for serial in _serials_from_stock_row(row):
 			lot_name = _get_lot_name_by_serial(serial)
 			if not lot_name:
-				frappe.throw(
-					_("Dispensing Lot {0} was not found for Item {1} on row {2}.").format(
-						serial, row.item_code, row.idx
-					)
-				)
+				# Missing lot will be created on submit at the target warehouse
+				continue
 			lot = frappe.get_doc("Dispensing Lot", lot_name)
 			_validate_lot_eligible_for_transfer(lot, serial)
 
