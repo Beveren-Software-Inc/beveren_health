@@ -230,6 +230,10 @@ doc_events = {
     "HR Policy Document": {
         "on_update": "beveren_health.beveren_health.customize.hr_policy.distribute_policy"
     },
+    # HR: route leave to the employee's own department head (2-level workflow)
+    "Leave Application": {
+        "before_validate": "beveren_health.beveren_health.customize.leave_application.set_department_head_as_approver"
+    },
     # ACC-181 OP / IP price list by admission status
     "Sales Order": {
         "validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
