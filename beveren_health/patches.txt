@@ -6,3 +6,5 @@
 # Patches added in this section will be executed after doctypes are migrated
 # HR: two-level Leave Application approval (Department Head -> HR)
 execute:from beveren_health.beveren_health.customize.leave_workflow import setup_leave_approval_workflow; setup_leave_approval_workflow()
+# IP Package approval on Quotation: Patient Relations Manager -> CEO -> Chairman
+execute:from beveren_health.beveren_health.customize.quotation_workflow import setup_quotation_approval_workflow; setup_quotation_approval_workflow()
