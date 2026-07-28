@@ -1,0 +1,73 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-07-28 18:23:19.306557",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "validate_dispensing_lot_on_stock_entry",
+  "validate_dispensing_lot_on_sales_invoice",
+  "validate_dispensing_lot_on_stock_reconciliation",
+  "validate_dispensing_lot_on_purchase_receipt",
+  "validate_dispensing_lot_on_stock_scanner"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_stock_entry",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Stock entry"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_sales_invoice",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Sales Invoice"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_stock_reconciliation",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Stock Reconciliation"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_purchase_receipt",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Purchase Receipt"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_stock_scanner",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Stock Scanner"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-07-28 18:25:04.287895",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "Dispensing Setting",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

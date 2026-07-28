@@ -194,10 +194,10 @@ doc_events = {
     "Sales Invoice": {
         "validate": [
             "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
-            "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
             # ACC-181 OP / IP price list by admission status
             "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient",
         ],
+        "before_submit": "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
         "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
         "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
@@ -245,10 +245,8 @@ doc_events = {
         "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
     },
     "Purchase Receipt": {
-        "validate": [
-            "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-            "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
-        ],
+        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
         "on_submit": [
             "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
             "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
@@ -256,10 +254,8 @@ doc_events = {
         "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
     },
     "Stock Reconciliation": {
-        "validate": [
-            "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-            "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
-        ],
+        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
         "on_submit": [
             "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
             "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
@@ -272,17 +268,17 @@ doc_events = {
         "on_trash": "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
     },
     "Stock Entry": {
-        "validate": [
-            "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_stock_entry_warehouse",
-            "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
-        ],
+        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_stock_entry_warehouse",
+        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
         "on_submit": [
             "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
             "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
         ],
         "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
     },
-    
+    "Stock Scanner": {
+        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_scanner_dispensing_lots",
+    },
 }
 
 

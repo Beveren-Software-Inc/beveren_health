@@ -30,6 +30,23 @@ STOCK_DOC_CONFIG = {
 }
 
 
+DISPENSING_LOT_VALIDATION_SETTING = {
+	"Stock Entry": "validate_dispensing_lot_on_stock_entry",
+	"Sales Invoice": "validate_dispensing_lot_on_sales_invoice",
+	"Stock Reconciliation": "validate_dispensing_lot_on_stock_reconciliation",
+	"Purchase Receipt": "validate_dispensing_lot_on_purchase_receipt",
+	"Stock Scanner": "validate_dispensing_lot_on_stock_scanner",
+}
+
+
+def is_dispensing_lot_validation_enabled(doctype):
+	"""Whether Dispensing Setting requires lots on this doctype."""
+	fieldname = DISPENSING_LOT_VALIDATION_SETTING.get(doctype)
+	if not fieldname:
+		return False
+	return bool(cint(frappe.db.get_single_value("Dispensing Setting", fieldname) or 0))
+
+
 def item_requires_dispensing_lot(item_code):
 	"""Item flagged on master — dispensing lot mandatory (like serial no)."""
 	if not item_code:
@@ -37,20 +54,25 @@ def item_requires_dispensing_lot(item_code):
 	return bool(cint(frappe.db.get_value("Item", item_code, "custom_has_dispense_lot") or 0))
 
 
-def validate_row_has_dispensing_lot(row, row_label=None):
+def validate_row_has_dispensing_lot(row, row_label=None, lot_field=None):
 	"""Raise if item requires a dispensing lot but the stock/sales line has none."""
 	if not item_requires_dispensing_lot(row.get("item_code")):
 		return
 
-	if _serials_from_stock_row(row):
+	if lot_field:
+		serials = split_dispensing_lots(row.get(lot_field) or "")
+	else:
+		serials = _serials_from_stock_row(row)
+
+	if serials:
 		return
 
-	# label = row_label or _("row {0}").format(row.get("idx") or "")
-	# frappe.throw(
-	# 	_("Dispensing Lot is required for Item {0} ({1}). Scan or select a lot on the line.").format(
-	# 		row.item_code, label
-	# 	)
-	# )
+	label = row_label or _("row {0}").format(row.get("idx") or "")
+	frappe.throw(
+		_("Dispensing Lot is required for Item {0} ({1}). Scan or select a lot on the line.").format(
+			row.item_code, label
+		)
+	)
 
 
 def split_dispensing_lots(value):
@@ -430,6 +452,9 @@ def _reverse_material_transfer_dispensing_lots(doc):
 
 def validate_stock_document_dispensing_lots(doc, method=None):
 	"""Require dispensing lot on lines when Item.custom_has_dispense_lot is set."""
+	if not is_dispensing_lot_validation_enabled(doc.doctype):
+		return
+
 	config = STOCK_DOC_CONFIG.get(doc.doctype)
 	if not config:
 		return
@@ -438,6 +463,21 @@ def validate_stock_document_dispensing_lots(doc, method=None):
 		if not row.item_code:
 			continue
 		validate_row_has_dispensing_lot(row, row_label=_("row {0}").format(row.idx))
+
+
+def validate_stock_scanner_dispensing_lots(doc, method=None):
+	"""Require dispensing lot (serial_no) on Stock Scanner lines when setting is on."""
+	if not is_dispensing_lot_validation_enabled("Stock Scanner"):
+		return
+
+	for row in doc.get("items") or []:
+		if not row.item_code:
+			continue
+		validate_row_has_dispensing_lot(
+			row,
+			row_label=_("row {0}").format(row.idx),
+			lot_field="serial_no",
+		)
 
 
 def _stock_entry_line_needs_dispensing_lot(doc, row):
@@ -453,11 +493,12 @@ def _stock_entry_line_needs_dispensing_lot(doc, row):
 
 def validate_stock_entry_dispensing_lots(doc, method=None):
 	"""Require lots on flagged items; block partial pack transfer when lot already exists."""
-	for row in doc.get("items") or []:
-		if not row.item_code:
-			continue
-		if _stock_entry_line_needs_dispensing_lot(doc, row):
-			validate_row_has_dispensing_lot(row, row_label=_("row {0}").format(row.idx))
+	if is_dispensing_lot_validation_enabled("Stock Entry"):
+		for row in doc.get("items") or []:
+			if not row.item_code:
+				continue
+			if _stock_entry_line_needs_dispensing_lot(doc, row):
+				validate_row_has_dispensing_lot(row, row_label=_("row {0}").format(row.idx))
 
 	if not _is_material_transfer_stock_entry(doc):
 		return
@@ -1325,21 +1366,23 @@ def validate_sales_invoice_dispensing_lots(doc):
 	if doc.get("is_return"):
 		return
 
+	require_lot = is_dispensing_lot_validation_enabled("Sales Invoice")
+
 	for row in doc.items:
 		if not row.item_code:
 			continue
 
 		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
 
-		# if item_requires_dispensing_lot(row.item_code) and not lot_names:
-		# 	frappe.throw(
-		# 		_("Dispensing Lot is required for Item {0} in row {1}.").format(
-		# 			row.item_code, row.idx
-		# 		)
-		# 	)
+		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
+			frappe.throw(
+				_("Dispensing Lot is required for Item {0} in row {1}.").format(
+					row.item_code, row.idx
+				)
+			)
 
-		# if not lot_names:
-		# 	continue
+		if not lot_names:
+			continue
 
 		multi_pack = _si_row_is_multi_pack_sale(row, lot_names)
 		if multi_pack:
