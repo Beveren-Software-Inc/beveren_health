@@ -8,6 +8,7 @@
  "field_order": [
   "validate_dispensing_lot_on_stock_entry",
   "validate_dispensing_lot_on_sales_invoice",
+  "validate_dispensing_lot_on_delivery_note",
   "validate_dispensing_lot_on_stock_reconciliation",
   "validate_dispensing_lot_on_purchase_receipt",
   "validate_dispensing_lot_on_stock_scanner"
@@ -24,6 +25,12 @@
    "fieldname": "validate_dispensing_lot_on_sales_invoice",
    "fieldtype": "Check",
    "label": "Validate Dispensing Lot on Sales Invoice"
+  },
+  {
+   "default": "0",
+   "fieldname": "validate_dispensing_lot_on_delivery_note",
+   "fieldtype": "Check",
+   "label": "Validate Dispensing Lot on Delivery Note"
   },
   {
    "default": "0",

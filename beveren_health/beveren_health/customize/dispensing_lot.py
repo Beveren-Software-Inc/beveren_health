@@ -33,10 +33,14 @@ STOCK_DOC_CONFIG = {
 DISPENSING_LOT_VALIDATION_SETTING = {
 	"Stock Entry": "validate_dispensing_lot_on_stock_entry",
 	"Sales Invoice": "validate_dispensing_lot_on_sales_invoice",
+	"Delivery Note": "validate_dispensing_lot_on_delivery_note",
 	"Stock Reconciliation": "validate_dispensing_lot_on_stock_reconciliation",
 	"Purchase Receipt": "validate_dispensing_lot_on_purchase_receipt",
 	"Stock Scanner": "validate_dispensing_lot_on_stock_scanner",
 }
+
+# Documents that consume / restore dispensing lots on submit / cancel
+DISPENSING_LOT_SALE_DOCTYPES = frozenset({"Sales Invoice", "Delivery Note"})
 
 
 def is_dispensing_lot_validation_enabled(doctype):
@@ -1033,7 +1037,7 @@ def _lot_has_dispensing_uom_unit_sales(lot):
 		return False
 
 	for row in lot.transactions:
-		if row.transaction_type != "Out" or row.reference_doctype != "Sales Invoice":
+		if row.transaction_type != "Out" or row.reference_doctype not in DISPENSING_LOT_SALE_DOCTYPES:
 			continue
 		if row.uom == dispensing_uom and flt(row.qty) > 0:
 			return True
@@ -1158,7 +1162,7 @@ def _lot_has_cancel_reversal(lot, reference_doctype, reference_name):
 
 def _lot_has_sales_invoice_out(lot):
 	for row in lot.transactions:
-		if row.transaction_type == "Out" and row.reference_doctype == "Sales Invoice":
+		if row.transaction_type == "Out" and row.reference_doctype in DISPENSING_LOT_SALE_DOCTYPES:
 			return True
 	return False
 
@@ -1345,6 +1349,17 @@ def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference
 		if _lot_has_reference_transaction(lot, reference_doctype, reference_name, transaction_type):
 			continue
 
+		# Hospital flow: DN already consumed the lot; skip when SI is billed from that DN.
+		if (
+			not is_return
+			and reference_doctype == "Sales Invoice"
+			and item_row.get("delivery_note")
+			and _lot_has_reference_transaction(
+				lot, "Delivery Note", item_row.get("delivery_note"), "Out"
+			)
+		):
+			continue
+
 		if not is_return:
 			validate_dispensing_lot_for_sale(sale_row, lot)
 
@@ -1356,9 +1371,9 @@ def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference
 			reference_doctype=reference_doctype,
 			reference_name=reference_name,
 			posting_date=posting_date,
-			remarks=_("Sales return {0}").format(reference_name)
+			remarks=_("Return {0} {1}").format(reference_doctype, reference_name)
 			if is_return
-			else _("Sales Invoice {0}").format(reference_name),
+			else _("{0} {1}").format(reference_doctype, reference_name),
 		)
 
 
@@ -1449,3 +1464,51 @@ def reverse_sales_invoice_dispensing_lots(doc):
 				posting_date=doc.posting_date or frappe.utils.today(),
 				remarks=_("Cancelled {0}").format(doc.name),
 			)
+
+
+def validate_delivery_note_dispensing_lots(doc, method=None):
+	"""Validate dispensing lots on Delivery Note (hospital POS submits DN from Sales Order)."""
+	if doc.get("is_return"):
+		return
+
+	require_lot = is_dispensing_lot_validation_enabled("Delivery Note")
+
+	for row in doc.items:
+		if not row.item_code:
+			continue
+
+		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
+
+		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
+			frappe.throw(
+				_("Dispensing Lot is required for Item {0} in row {1}.").format(
+					row.item_code, row.idx
+				)
+			)
+
+		if not lot_names:
+			continue
+
+		multi_pack = _si_row_is_multi_pack_sale(row, lot_names)
+		if multi_pack:
+			lot_count = len(lot_names)
+			if lot_count and flt(row.qty) != lot_count:
+				frappe.throw(
+					_(
+						"Row {0}: quantity {1} must match the number of dispensing lots on the line ({2})."
+					).format(row.idx, row.qty, lot_count)
+				)
+
+		for lot_name in lot_names:
+			lot = frappe.get_doc("Dispensing Lot", lot_name)
+			validate_dispensing_lot_for_sale(_sale_row_for_lot(row, lot, multi_pack), lot)
+
+
+def process_delivery_note_dispensing_lots(doc, method=None):
+	"""Consume / restore dispensing lots when Delivery Note is submitted."""
+	process_sales_invoice_dispensing_lots(doc, is_return=bool(doc.get("is_return")))
+
+
+def reverse_delivery_note_dispensing_lots(doc, method=None):
+	"""Restore dispensing lots when Delivery Note is cancelled."""
+	reverse_sales_invoice_dispensing_lots(doc)

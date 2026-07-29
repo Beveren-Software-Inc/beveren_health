@@ -201,6 +201,12 @@ doc_events = {
         "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
         "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
+    "Delivery Note": {
+        # Hospital POS creates DN from Sales Order; lots must be consumed here (not only on SI).
+        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_delivery_note_dispensing_lots",
+        "on_submit": "beveren_health.beveren_health.customize.dispensing_lot.process_delivery_note_dispensing_lots",
+        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_delivery_note_dispensing_lots",
+    },
     "Full and Final Statement" : {
         "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
     },
