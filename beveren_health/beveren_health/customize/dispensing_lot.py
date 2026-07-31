@@ -1325,6 +1325,70 @@ def _sale_row_for_lot(item_row, lot, multi_pack):
 	return item_row
 
 
+def _sale_rows_for_lots(item_row, lots, multi_pack):
+	"""
+	Sale rows aligned with `lots` for one sales line.
+
+	Several lots on a line sold in the dispensing UOM share the line quantity:
+	each lot is filled up to its remaining qty, in order. Without this every lot
+	would be charged the whole line qty (2 UNIT against two 1-UNIT lots would
+	fail as insufficient, and would consume double on submit).
+	"""
+	if multi_pack or len(lots) <= 1:
+		return [_sale_row_for_lot(item_row, lot, multi_pack) for lot in lots]
+
+	issue_uom, total_qty = compute_issue_from_sales_item(item_row, lots[0])
+	if not total_qty:
+		return [_sale_row_for_lot(item_row, lot, multi_pack) for lot in lots]
+
+	rows = []
+	remaining = flt(total_qty)
+	last_index = len(lots) - 1
+
+	for index, lot in enumerate(lots):
+		if index == last_index:
+			# Last lot absorbs any shortfall so validation reports it against that lot.
+			lot_qty = remaining
+		else:
+			lot_qty = min(remaining, max(flt(lot.remaining_qty), 0))
+
+		rows.append(
+			frappe._dict(
+				item_code=item_row.item_code,
+				uom=issue_uom,
+				qty=lot_qty,
+				stock_qty=lot_qty,
+			)
+		)
+		remaining = flt(remaining - lot_qty, 6)
+
+	return rows
+
+
+def _get_lot_docs(lot_names, validate_exists=False):
+	lots = []
+	for lot_name in lot_names:
+		if validate_exists and not frappe.db.exists("Dispensing Lot", lot_name):
+			frappe.throw(_("Dispensing Lot {0} does not exist").format(lot_name))
+		lots.append(frappe.get_doc("Dispensing Lot", lot_name))
+	return lots
+
+
+def _recorded_lot_transaction(lot, reference_doctype, reference_name, transaction_type):
+	"""(uom, qty) already posted on this lot for a reference."""
+	qty = 0
+	uom = None
+	for row in lot.transactions:
+		if (
+			row.reference_doctype == reference_doctype
+			and row.reference_name == reference_name
+			and row.transaction_type == transaction_type
+		):
+			qty += flt(row.qty)
+			uom = uom or row.uom
+	return uom, qty
+
+
 def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference_name, posting_date, is_return=False):
 	"""Post Out/In on each dispensing lot on this SI line (one pack per lot when multiple serials)."""
 	lot_names = _resolve_dispensing_lot_names_from_si_row(item_row)
@@ -1332,13 +1396,10 @@ def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference
 		return
 
 	multi_pack = _si_row_is_multi_pack_sale(item_row, lot_names)
+	lots = _get_lot_docs(lot_names, validate_exists=True)
+	sale_rows = _sale_rows_for_lots(item_row, lots, multi_pack)
 
-	for lot_name in lot_names:
-		if not frappe.db.exists("Dispensing Lot", lot_name):
-			frappe.throw(_("Dispensing Lot {0} does not exist").format(lot_name))
-
-		lot = frappe.get_doc("Dispensing Lot", lot_name)
-		sale_row = _sale_row_for_lot(item_row, lot, multi_pack)
+	for lot, sale_row in zip(lots, sale_rows, strict=True):
 		issue_uom, issue_qty = compute_issue_from_sales_item(sale_row, lot)
 
 		if not issue_qty:
@@ -1409,9 +1470,10 @@ def validate_sales_invoice_dispensing_lots(doc):
 					).format(row.idx, row.qty, lot_count)
 				)
 
-		for lot_name in lot_names:
-			lot = frappe.get_doc("Dispensing Lot", lot_name)
-			validate_dispensing_lot_for_sale(_sale_row_for_lot(row, lot, multi_pack), lot)
+		lots = _get_lot_docs(lot_names)
+		sale_rows = _sale_rows_for_lots(row, lots, multi_pack)
+		for lot, sale_row in zip(lots, sale_rows, strict=True):
+			validate_dispensing_lot_for_sale(sale_row, lot)
 
 
 def process_sales_invoice_dispensing_lots(doc, is_return=False):
@@ -1437,14 +1499,10 @@ def reverse_sales_invoice_dispensing_lots(doc):
 			continue
 
 		multi_pack = _si_row_is_multi_pack_sale(row, lot_names)
+		lots = _get_lot_docs(lot_names)
+		sale_rows = _sale_rows_for_lots(row, lots, multi_pack)
 
-		for lot_name in lot_names:
-			lot = frappe.get_doc("Dispensing Lot", lot_name)
-			sale_row = _sale_row_for_lot(row, lot, multi_pack)
-			issue_uom, issue_qty = compute_issue_from_sales_item(sale_row, lot)
-			if not issue_qty:
-				continue
-
+		for lot, sale_row in zip(lots, sale_rows, strict=True):
 			original_type = "In" if is_return else "Out"
 			reverse_type = "Out" if is_return else "In"
 
@@ -1452,6 +1510,16 @@ def reverse_sales_invoice_dispensing_lots(doc):
 				continue
 
 			if _lot_has_reference_transaction(lot, doc.doctype, doc.name, reverse_type):
+				continue
+
+			# Mirror what was posted: re-splitting now would give a different share
+			# per lot, because the original transaction already moved remaining_qty.
+			issue_uom, issue_qty = _recorded_lot_transaction(
+				lot, doc.doctype, doc.name, original_type
+			)
+			if not issue_qty:
+				issue_uom, issue_qty = compute_issue_from_sales_item(sale_row, lot)
+			if not issue_qty:
 				continue
 
 			_append_lot_transaction(
@@ -1499,9 +1567,10 @@ def validate_delivery_note_dispensing_lots(doc, method=None):
 					).format(row.idx, row.qty, lot_count)
 				)
 
-		for lot_name in lot_names:
-			lot = frappe.get_doc("Dispensing Lot", lot_name)
-			validate_dispensing_lot_for_sale(_sale_row_for_lot(row, lot, multi_pack), lot)
+		lots = _get_lot_docs(lot_names)
+		sale_rows = _sale_rows_for_lots(row, lots, multi_pack)
+		for lot, sale_row in zip(lots, sale_rows, strict=True):
+			validate_dispensing_lot_for_sale(sale_row, lot)
 
 
 def process_delivery_note_dispensing_lots(doc, method=None):

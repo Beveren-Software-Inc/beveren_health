@@ -8,10 +8,10 @@
  "field_order": [
   "validate_dispensing_lot_on_stock_entry",
   "validate_dispensing_lot_on_sales_invoice",
-  "validate_dispensing_lot_on_delivery_note",
   "validate_dispensing_lot_on_stock_reconciliation",
   "validate_dispensing_lot_on_purchase_receipt",
-  "validate_dispensing_lot_on_stock_scanner"
+  "validate_dispensing_lot_on_stock_scanner",
+  "validate_dispensing_lot_on_delivery_note"
  ],
  "fields": [
   {
@@ -30,7 +30,7 @@
    "default": "0",
    "fieldname": "validate_dispensing_lot_on_delivery_note",
    "fieldtype": "Check",
-   "label": "Validate Dispensing Lot on Delivery Note"
+   "label": "validate_dispensing_lot_on_delivery_note"
   },
   {
    "default": "0",
@@ -55,7 +55,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-28 18:25:04.287895",
+ "modified": "2026-07-31 23:44:45.157667",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Dispensing Setting",
