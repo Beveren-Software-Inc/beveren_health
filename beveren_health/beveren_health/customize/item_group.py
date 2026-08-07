@@ -343,7 +343,9 @@ def _batch_item_mismatch(batch_no, item_code):
 	return None
 
 
-def _migrate_one_serial_to_dispensing_lot(serial_row, item_group):
+def _migrate_one_serial_to_dispensing_lot(
+	serial_row, source_document, source_doctype="Item Group"
+):
 	"""
 	Create one Dispensing Lot from an ERPNext Serial No row (migration only — does not alter Serial No).
 	"""
@@ -406,8 +408,8 @@ def _migrate_one_serial_to_dispensing_lot(serial_row, item_group):
 			"initial_qty": pack_size,
 			"remaining_qty": remaining_qty,
 			"status": lot_status,
-			"source_doctype": "Item Group",
-			"source_document": item_group,
+			"source_doctype": source_doctype,
+			"source_document": source_document,
 		}
 	)
 	lot.insert(ignore_permissions=True)
@@ -424,17 +426,14 @@ def _migrate_one_serial_to_dispensing_lot(serial_row, item_group):
 	return "created", lot.name
 
 
-def _run_migrate_serials_to_dispensing_lots(item_group):
-	"""Create Dispensing Lot records from all Serial Nos for items in this item group."""
-	item_codes = frappe.get_all(
-		"Item", filters={"item_group": item_group}, pluck="name"
-	)
-
+def _run_migrate_serials_for_item_codes(item_codes, source_document, source_doctype="Item Group"):
+	"""Create Dispensing Lot records from Serial Nos for the given item codes."""
 	if not item_codes:
 		return {
-			"message": _("No items in group {0}").format(item_group),
+			"message": _("No items to migrate"),
 			"created_count": 0,
 			"skipped_count": 0,
+			"error_count": 0,
 			"errors": [],
 		}
 
@@ -456,12 +455,12 @@ def _run_migrate_serials_to_dispensing_lots(item_group):
 
 	for idx, serial_row in enumerate(serials, start=1):
 		try:
-			result_type, detail = _migrate_one_serial_to_dispensing_lot(serial_row, item_group)
+			result_type, detail = _migrate_one_serial_to_dispensing_lot(
+				serial_row, source_document, source_doctype=source_doctype
+			)
 			if result_type == "created":
 				created.append(detail)
-			elif result_type == "skipped_exists":
-				skipped.append(detail)
-			elif result_type == "skipped":
+			elif result_type in ("skipped_exists", "skipped"):
 				skipped.append(detail)
 			else:
 				errors.append(detail if isinstance(detail, str) else str(detail))
@@ -471,7 +470,10 @@ def _run_migrate_serials_to_dispensing_lots(item_group):
 			if not isinstance(e, frappe.ValidationError):
 				frappe.log_error(
 					title="Serial to Dispensing Lot migration",
-					message=f"Item group {item_group}, serial {label}: {frappe.get_traceback()}",
+					message=(
+						f"{source_doctype} {source_document}, serial {label}: "
+						f"{frappe.get_traceback()}"
+					),
 				)
 
 		if idx % commit_every == 0:
@@ -481,7 +483,7 @@ def _run_migrate_serials_to_dispensing_lots(item_group):
 
 	message = _(
 		"Migrated Serial Nos to Dispensing Lot for {0}: {1} created, {2} skipped, {3} error(s)."
-	).format(item_group, len(created), len(skipped), len(errors))
+	).format(source_document, len(created), len(skipped), len(errors))
 
 	return {
 		"message": message,
@@ -490,6 +492,26 @@ def _run_migrate_serials_to_dispensing_lots(item_group):
 		"error_count": len(errors),
 		"errors": errors[:50],
 	}
+
+
+def _run_migrate_serials_to_dispensing_lots(item_group):
+	"""Create Dispensing Lot records from all Serial Nos for items in this item group."""
+	item_codes = frappe.get_all(
+		"Item", filters={"item_group": item_group}, pluck="name"
+	)
+
+	if not item_codes:
+		return {
+			"message": _("No items in group {0}").format(item_group),
+			"created_count": 0,
+			"skipped_count": 0,
+			"error_count": 0,
+			"errors": [],
+		}
+
+	return _run_migrate_serials_for_item_codes(
+		item_codes, item_group, source_doctype="Item Group"
+	)
 
 
 def _run_migrate_serials_to_dispensing_lots_job(item_group):
