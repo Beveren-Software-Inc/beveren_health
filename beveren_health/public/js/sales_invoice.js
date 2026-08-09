@@ -22,11 +22,27 @@ frappe.ui.form.on("Sales Invoice", {
 			return { filters };
 		});
 	},
+
+	update_stock(frm) {
+		(frm.doc.items || []).forEach((row) => {
+			set_dispensing_lot_reqd(frm, row.doctype, row.name);
+		});
+	},
 });
 
 function set_dispensing_lot_reqd(frm, cdt, cdn) {
 	const row = locals[cdt][cdn];
 	if (!row || !row.item_code) {
+		return;
+	}
+	// Only require lot when the invoice updates stock (DN already handled stock otherwise).
+	if (!frm.doc.update_stock) {
+		frm.fields_dict.items.grid.update_docfield_property(
+			"custom_dispensing_lot",
+			"reqd",
+			0,
+			cdn
+		);
 		return;
 	}
 	frappe.db.get_value("Item", row.item_code, "custom_has_dispense_lot", (r) => {

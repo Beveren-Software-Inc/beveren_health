@@ -1442,6 +1442,11 @@ def validate_sales_invoice_dispensing_lots(doc):
 	if doc.get("is_return"):
 		return
 
+	# Hospital / DN flow: stock (and lot consumption) already happened on Delivery Note.
+	# Only require/validate dispensing lots when this invoice itself updates stock.
+	if not doc.get("update_stock"):
+		return
+
 	require_lot = is_dispensing_lot_validation_enabled("Sales Invoice")
 
 	for row in doc.items:
