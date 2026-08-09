@@ -1444,13 +1444,17 @@ def validate_sales_invoice_dispensing_lots(doc):
 
 	# Hospital / DN flow: stock (and lot consumption) already happened on Delivery Note.
 	# Only require/validate dispensing lots when this invoice itself updates stock.
-	if not doc.get("update_stock"):
+	if not cint(doc.get("update_stock")):
 		return
 
 	require_lot = is_dispensing_lot_validation_enabled("Sales Invoice")
 
 	for row in doc.items:
 		if not row.item_code:
+			continue
+
+		# Line already delivered via DN — lot was validated/consumed there.
+		if row.get("delivery_note"):
 			continue
 
 		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
@@ -1482,6 +1486,10 @@ def validate_sales_invoice_dispensing_lots(doc):
 
 
 def process_sales_invoice_dispensing_lots(doc, is_return=False):
+	# Do not touch lots when the invoice is billing-only (DN already updated stock).
+	if doc.doctype == "Sales Invoice" and not cint(doc.get("update_stock")):
+		return
+
 	for row in doc.items:
 		if not _resolve_dispensing_lot_names_from_si_row(row):
 			continue
@@ -1497,6 +1505,9 @@ def process_sales_invoice_dispensing_lots(doc, is_return=False):
 
 def reverse_sales_invoice_dispensing_lots(doc):
 	"""On cancel, post opposite transactions if not already reversed."""
+	if doc.doctype == "Sales Invoice" and not cint(doc.get("update_stock")):
+		return
+
 	is_return = doc.get("is_return")
 	for row in doc.items:
 		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
