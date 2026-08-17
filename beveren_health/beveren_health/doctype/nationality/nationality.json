@@ -6,7 +6,8 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "nationality"
+  "nationality",
+  "code"
  ],
  "fields": [
   {
@@ -14,12 +15,19 @@
    "fieldtype": "Data",
    "label": "Nationality",
    "unique": 1
+  },
+  {
+   "fieldname": "code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Code"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-01-07 06:26:23.604520",
+ "modified": "2026-08-16 19:30:46.617587",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Nationality",

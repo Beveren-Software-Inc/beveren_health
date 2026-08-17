@@ -2,7 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
-from frappe.utils import date_diff, getdate, today
+from frappe.utils import cint, date_diff, getdate, today
 
 from beveren_health.beveren_health.customize.dispensing_lot import (
 	process_sales_invoice_dispensing_lots,
@@ -31,12 +31,19 @@ def validate_return_restrictions(doc, method):
 
 
 def validate_dispensing_lots(doc, method):
+	# Lot consumption belongs on Delivery Note / stock-updating invoices only.
+	if not cint(doc.get("update_stock")):
+		return
 	validate_sales_invoice_dispensing_lots(doc)
 
 
 def update_dispensing_lots_on_submit(doc, method):
+	if not cint(doc.get("update_stock")):
+		return
 	process_sales_invoice_dispensing_lots(doc, is_return=bool(doc.get("is_return")))
 
 
 def restore_dispensing_lots_on_cancel(doc, method):
+	if not cint(doc.get("update_stock")):
+		return
 	reverse_sales_invoice_dispensing_lots(doc)

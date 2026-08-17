@@ -197,13 +197,19 @@ doc_events = {
             # ACC-181 OP / IP price list by admission status
             "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient",
         ],
-        "before_submit": "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+        "before_submit": [
+            "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+            "beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
+        ],
         "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
         "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
     },
     "Delivery Note": {
         # Hospital POS creates DN from Sales Order; lots must be consumed here (not only on SI).
-        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_delivery_note_dispensing_lots",
+        "before_submit": [
+            "beveren_health.beveren_health.customize.dispensing_lot.validate_delivery_note_dispensing_lots",
+            "beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
+        ],
         "on_submit": "beveren_health.beveren_health.customize.dispensing_lot.process_delivery_note_dispensing_lots",
         "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_delivery_note_dispensing_lots",
     },
