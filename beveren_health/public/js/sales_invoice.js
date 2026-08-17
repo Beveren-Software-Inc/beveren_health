@@ -1,8 +1,47 @@
 // Copyright (c) 2026, Beveren Software and contributors
 // For license information, please see license.txt
 
+function auto_fill_return_lots(frm) {
+	if (!frm.doc.return_against || !frm.doc.items?.length) {
+		return;
+	}
+
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.dispensing_lot.resolve_return_lots_for_lines",
+		args: {
+			doctype: frm.doc.doctype,
+			return_against: frm.doc.return_against,
+		},
+		callback(r) {
+			if (!r || !r.message) {
+				return;
+			}
+			const lot_map = r.message;
+			frm.doc.items.forEach((row) => {
+				if (row.custom_dispensing_lot) {
+					return;
+				}
+				const ref = row.sales_invoice_item || row.dn_detail;
+				if (ref && lot_map[ref]) {
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"custom_dispensing_lot",
+						lot_map[ref]
+					);
+				}
+			});
+			frm.refresh_field("items");
+		},
+	});
+}
+
 frappe.ui.form.on("Sales Invoice", {
 	refresh(frm) {
+		if (frm.doc.is_return) {
+			auto_fill_return_lots(frm);
+		}
+
 		frm.set_query("custom_dispensing_lot", "items", (doc, cdt, cdn) => {
 			const row = locals[cdt][cdn];
 			if (!row || !row.item_code) {
@@ -11,9 +50,16 @@ frappe.ui.form.on("Sales Invoice", {
 
 			const filters = {
 				item: row.item_code,
-				status: ["in", ["Active", "Partially Sold"]],
-				remaining_qty: [">", 0],
 			};
+
+			if (frm.doc.is_return) {
+				// A return can put stock back onto a delivered lot (full pack sold)
+				// or a partially sold lot — include all non-inactive lots.
+				filters.status = ["in", ["Active", "Partially Sold", "Delivered"]];
+			} else {
+				filters.status = ["in", ["Active", "Partially Sold"]];
+				filters.remaining_qty = [">", 0];
+			}
 
 			if (row.batch_no) {
 				filters.batch_no = row.batch_no;

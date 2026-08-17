@@ -1294,9 +1294,82 @@ def format_dispensing_lot_names_for_field(lot_names):
 	return "\n".join(clean)
 
 
-def _resolve_dispensing_lot_names_from_si_row(item_row):
-	"""All dispensing lots on one Sales Invoice line from custom_dispensing_lot only."""
-	return resolve_dispensing_lot_names_from_field(item_row.get("custom_dispensing_lot"))
+def _resolve_dispensing_lot_names_from_si_row(item_row, reference_doctype=None, reference_name=None):
+	"""All dispensing lots on one return/sales line.
+
+	Uses `custom_dispensing_lot` when present; on returns with an empty field it
+	falls back to the lots used on the original document's matching row so the
+	dispensing lot is correctly reactivated / restocked.
+	"""
+	names = resolve_dispensing_lot_names_from_field(item_row.get("custom_dispensing_lot"))
+	if names:
+		return names
+
+	return _resolve_return_lot_names_from_original(item_row, reference_doctype, reference_name)
+
+
+def _resolve_return_lot_names_from_original(item_row, reference_doctype, reference_name):
+	"""When a return row carries no lots, inherit them from the original document row.
+
+	Sales Invoice returns link via `sales_invoice_item`; Delivery Note returns via
+	`dn_detail`.  The current document may be a return itself — in that case
+	`return_against` points at the original that carries the lot values.  When the
+	reference document is not yet persisted (e.g. during before_submit), the caller
+	passes the original name via `reference_name` directly.
+	"""
+	if not item_row or not reference_doctype or not reference_name:
+		return []
+	if reference_doctype not in DISPENSING_LOT_SALE_DOCTYPES:
+		return []
+
+	# If `reference_name` is the original (not a return), use it directly.
+	# If it is a submitted return, resolve through return_against.
+	original_name = reference_name
+	if frappe.db.exists(reference_doctype, reference_name):
+		return_against = frappe.db.get_value(reference_doctype, reference_name, "return_against")
+		if return_against:
+			original_name = return_against
+	elif item_row.get("parent"):
+		# The row belongs to an unsaved document — reference_name may be the
+		# return_against value already; fall through to use it directly.
+		pass
+
+	if not original_name:
+		return []
+
+	ref_field = "sales_invoice_item" if reference_doctype == "Sales Invoice" else "dn_detail"
+	ref_value = item_row.get(ref_field)
+	if not ref_value:
+		return []
+
+	original = frappe.get_doc(reference_doctype, original_name)
+	items = original.get("items") or []
+	for orig_row in items:
+		if orig_row.name == ref_value:
+			return resolve_dispensing_lot_names_from_field(orig_row.get("custom_dispensing_lot"))
+
+	return []
+
+
+@frappe.whitelist()
+def resolve_return_lots_for_lines(doctype, return_against):
+	"""Return map of original item row name to formatted dispensing lots for a return.
+
+	Used by Sales Invoice / Delivery Note client-side to auto-fill
+	`custom_dispensing_lot` on return rows created without the field.
+	"""
+	if doctype not in DISPENSING_LOT_SALE_DOCTYPES or not return_against:
+		return {}
+
+	original = frappe.get_doc(doctype, return_against)
+
+	lot_map = {}
+	for orig_row in original.get("items") or []:
+		names = resolve_dispensing_lot_names_from_field(orig_row.get("custom_dispensing_lot"))
+		if names:
+			lot_map[orig_row.name] = format_dispensing_lot_names_for_field(names)
+
+	return lot_map
 
 
 def _resolve_dispensing_lot_from_si_row(item_row):
@@ -1391,7 +1464,9 @@ def _recorded_lot_transaction(lot, reference_doctype, reference_name, transactio
 
 def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference_name, posting_date, is_return=False):
 	"""Post Out/In on each dispensing lot on this SI line (one pack per lot when multiple serials)."""
-	lot_names = _resolve_dispensing_lot_names_from_si_row(item_row)
+	lot_names = _resolve_dispensing_lot_names_from_si_row(
+		item_row, reference_doctype=reference_doctype, reference_name=reference_name
+	)
 	if not lot_names:
 		return
 
@@ -1457,7 +1532,9 @@ def validate_sales_invoice_dispensing_lots(doc):
 		if row.get("delivery_note"):
 			continue
 
-		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
+		lot_names = _resolve_dispensing_lot_names_from_si_row(
+			row, reference_doctype=doc.doctype, reference_name=doc.name
+		)
 
 		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
 			frappe.throw(
@@ -1485,13 +1562,36 @@ def validate_sales_invoice_dispensing_lots(doc):
 			validate_dispensing_lot_for_sale(sale_row, lot)
 
 
+def fill_return_lots_on_submit(doc, method=None):
+	"""Persist resolved dispensing lots onto return rows before submit.
+
+	Sales Invoice / Delivery Note returns created by the mapper usually carry
+	`custom_dispensing_lot` (no_copy=0); manual or API-built returns may not.
+	Runs in `before_submit` so the value is stored with the document and the
+	submit-time `process_*` sees the resolved lots directly.
+	"""
+	if not doc.get("is_return") or not doc.get("return_against"):
+		return
+
+	for row in doc.items:
+		if row.get("custom_dispensing_lot"):
+			continue
+		lot_names = _resolve_return_lot_names_from_original(
+			row, reference_doctype=doc.doctype, reference_name=doc.return_against
+		)
+		if lot_names:
+			row.custom_dispensing_lot = format_dispensing_lot_names_for_field(lot_names)
+
+
 def process_sales_invoice_dispensing_lots(doc, is_return=False):
 	# Do not touch lots when the invoice is billing-only (DN already updated stock).
 	if doc.doctype == "Sales Invoice" and not cint(doc.get("update_stock")):
 		return
 
 	for row in doc.items:
-		if not _resolve_dispensing_lot_names_from_si_row(row):
+		if not _resolve_dispensing_lot_names_from_si_row(
+			row, reference_doctype=doc.doctype, reference_name=doc.name
+		):
 			continue
 
 		apply_sales_invoice_to_dispensing_lot(
@@ -1510,7 +1610,9 @@ def reverse_sales_invoice_dispensing_lots(doc):
 
 	is_return = doc.get("is_return")
 	for row in doc.items:
-		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
+		lot_names = _resolve_dispensing_lot_names_from_si_row(
+			row, reference_doctype=doc.doctype, reference_name=doc.name
+		)
 		if not lot_names:
 			continue
 
@@ -1561,7 +1663,9 @@ def validate_delivery_note_dispensing_lots(doc, method=None):
 		if not row.item_code:
 			continue
 
-		lot_names = _resolve_dispensing_lot_names_from_si_row(row)
+		lot_names = _resolve_dispensing_lot_names_from_si_row(
+			row, reference_doctype=doc.doctype, reference_name=doc.name
+		)
 
 		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
 			frappe.throw(

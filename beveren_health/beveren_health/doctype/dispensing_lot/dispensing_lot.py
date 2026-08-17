@@ -32,7 +32,11 @@ class DispensingLot(Document):
 
 	def set_remaining_qty(self):
 		if self._net_full_pack_sales() >= 1:
-			self.remaining_qty = 0
+			# A net full-pack sale means the whole physical pack is gone from stock.
+			# However, when a return comes back in the dispensing UOM (e.g. UNIT),
+			# the lot is reactivated with only the returned quantity.
+			returned_dispensing_qty = self._returned_dispensing_qty()
+			self.remaining_qty = flt(returned_dispensing_qty)
 			return
 
 		issued = 0
@@ -85,6 +89,15 @@ class DispensingLot(Document):
 				self.status = "Inactive"
 			return
 
+		if self._has_full_pack_sale() and flt(self.remaining_qty) > 0:
+			# Full pack was sold/consumed, but units were returned in the
+			# dispensing UOM — reactivate the lot as partially sold with the
+			# quantity that came back. Restore the serial that the full-pack
+			# sale had cleared.
+			self.status = "Partially Sold"
+			self._restore_serial_no_if_active()
+			return
+
 		if self._has_net_issue():
 			self.status = "Partially Sold"
 		else:
@@ -112,6 +125,48 @@ class DispensingLot(Document):
 	def _has_full_pack_sale(self):
 		"""Selling in stock UOM (e.g. Pack) means the whole lot is delivered."""
 		return self._net_full_pack_sales() >= 1
+
+	def _returned_dispensing_qty(self):
+		"""Net units returned in the dispensing UOM (e.g. UNIT) from a sales return.
+
+		Used to reactivate a lot that was fully consumed by a stock-UOM (pack) sale
+		when only part of the pack is returned in the dispensing UOM.  An In row that
+		was later cancelled (a matching Out with "Cancelled" remarks) is excluded so
+		the lot returns to Delivered when the return document is cancelled.
+		"""
+		if not self.stock_uom or self.stock_uom == self.uom:
+			return 0
+
+		returned = 0
+		for row in self.transactions:
+			if row.transaction_type != "In":
+				continue
+			if row.uom == self.stock_uom:
+				continue
+			qty = flt(row.qty)
+			if qty <= 0:
+				continue
+			if self._return_reference_was_cancelled(row):
+				continue
+			returned += qty
+
+		return returned
+
+	def _return_reference_was_cancelled(self, in_row):
+		"""True when the return document that created `in_row` has a cancellation Out."""
+		if not in_row.reference_doctype or not in_row.reference_name:
+			return False
+
+		for out in self.transactions:
+			if out.transaction_type != "Out":
+				continue
+			if out.reference_doctype != in_row.reference_doctype:
+				continue
+			if out.reference_name != in_row.reference_name:
+				continue
+			if "Cancelled" in (out.remarks or ""):
+				return True
+		return False
 
 	def _restore_serial_no_if_active(self):
 		if self.serial_no:
