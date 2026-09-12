@@ -121,16 +121,17 @@ app_include_icons = "/assets/beveren_health/icons.svg"
 after_migrate = [
     "beveren_health.beveren_health.override.hr_workspace.add_hr_workspace_links",
     "beveren_health.scripts.create_fnf_from_xlsx.run",
-    "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
+    # "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
     "beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
 ]
 
 # Boot
 # ----
 # Prune the desk grid to the Healthcare app only for clinical/healthcare staff.
-extend_bootinfo = [
-    "beveren_health.beveren_health.override.desk_sidebar.restrict_healthcare_sidebar"
-]
+#Commented by Mania
+# extend_bootinfo = [
+#     "beveren_health.beveren_health.override.desk_sidebar.restrict_healthcare_sidebar"
+# ]
 
 # Uninstallation
 # ------------
