@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "allow_import": 0,
+ "allow_rename": 0,
+ "autodoc": 1,
+ "creation": "2026-07-01 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "vat_account",
+  "vat_type"
+ ],
+ "fields": [
+  {
+   "fieldname": "vat_account",
+   "fieldtype": "Link",
+   "label": "VAT Account",
+   "options": "Account",
+   "reqd": 1,
+   "in_list_view": 1
+  },
+  {
+   "fieldname": "vat_type",
+   "fieldtype": "Select",
+   "label": "VAT Type",
+   "options": "RCM Input\nRCM Output\nVAT Input\nVAT Output",
+   "reqd": 1,
+   "in_list_view": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-01 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Beveren Health",
+ "name": "VAT Account Configuration",
+ "owner": "Administrator",
+ "permissions": [],
+ "states": []
+}

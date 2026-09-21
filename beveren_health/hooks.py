@@ -123,6 +123,7 @@ after_migrate = [
     "beveren_health.scripts.create_fnf_from_xlsx.run",
     # "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
     "beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
+    "beveren_health.vat_setup.ensure_nbr_vat_fields",
 ]
 
 # Boot
