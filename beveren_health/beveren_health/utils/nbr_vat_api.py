@@ -272,14 +272,14 @@ def get_sales_items(company, from_date, to_date, tax_id=None):
 			si.posting_date, si.customer, si.customer_name,
 			si.custom_vat_category as vat_category,
 			itt.custom_bahrain_vat_category,
-			SUM(CASE WHEN st.account_head IN %(vat_output)s THEN iwtd.amount ELSE 0 END) as vat_amount,
+			MAX(sii.base_net_amount) * IFNULL(MAX(ittd.tax_rate), 0) / 100 as vat_amount,
 			addr.country
 		FROM `tabSales Invoice Item` sii
 		INNER JOIN `tabSales Invoice` si ON sii.parent = si.name
 		LEFT JOIN `tabAddress` addr ON si.customer_address = addr.name
 		LEFT JOIN `tabItem Tax Template` itt ON sii.item_tax_template = itt.name
-		LEFT JOIN `tabItem Wise Tax Detail` iwtd ON iwtd.parent = si.name AND iwtd.item_row = sii.name
-		LEFT JOIN `tabSales Taxes and Charges` st ON iwtd.tax_row = st.name
+		LEFT JOIN `tabItem Tax Template Detail` ittd ON ittd.parent = itt.name AND ittd.tax_type IN %(vat_output)s
+		
 		LEFT JOIN `tabAddress` comp_addr ON si.company_address = comp_addr.name
 		WHERE si.company = %(company)s
 		  AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
