@@ -75,6 +75,7 @@ doctype_js = {
     "Stock Entry": "public/js/stock_entry.js",
     "Sales Invoice": "public/js/sales_invoice.js",
     "Full and Final Statement": "public/js/full_and_final_statement.js",
+    "Timesheet": "public/js/timesheet.js",
 }
 
 # Svg Icons
@@ -293,6 +294,10 @@ doc_events = {
     "Stock Scanner": {
         "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_scanner_dispensing_lots",
     },
+    # Header Patient (custom_patient) fills the patient on every time log row.
+    "Timesheet": {
+        "validate": "beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
+    },
 }
 
 
@@ -498,6 +503,11 @@ fixtures = [
                 "Purchase Receipt-custom_auto_save_scan_interval",
                 "Stock Entry-custom_auto_save_scan_interval",
                 "Stock Reconciliation-custom_auto_save_scan_interval",
+                "Timesheet-custom_patient_name",
+                "Timesheet-custom_patient",
+                "Timesheet Detail-custom_patient_name",
+                "Timesheet Detail-custom_patient",
+                "Timesheet Detail-custom_duration"
             ]]
         ]
     }
