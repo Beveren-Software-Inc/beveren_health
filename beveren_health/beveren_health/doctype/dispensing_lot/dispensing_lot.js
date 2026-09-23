@@ -14,9 +14,17 @@ frappe.ui.form.on("Dispensing Lot", {
 			};
 		});
 
-		frm.set_df_property("remaining_qty", "description", __("Updated from transaction rows on save."));
+		frm.set_df_property(
+			"remaining_qty",
+			"description",
+			__("Updated from transaction rows on save.")
+		);
 		if (frm.doc.status === "Delivered") {
-			frm.set_df_property("serial_no", "description", __("Cleared when the full pack is sold (stock UOM)."));
+			frm.set_df_property(
+				"serial_no",
+				"description",
+				__("Cleared when the full pack is sold (stock UOM).")
+			);
 		}
 	},
 

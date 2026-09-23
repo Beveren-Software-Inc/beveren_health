@@ -37,7 +37,8 @@ beveren_health.dispensing_lot_scan.set_lots = function (cdt, cdn, value, frm, ca
 		beveren_health.dispensing_lot_scan.DISPENSING_LOT_FIELD,
 		value || "",
 		() => {
-			const form = frm || frappe.get_cur_frm?.() || (typeof cur_frm !== "undefined" ? cur_frm : null);
+			const form =
+				frm || frappe.get_cur_frm?.() || (typeof cur_frm !== "undefined" ? cur_frm : null);
 			if (form) {
 				beveren_health.dispensing_lot_scan.sync_qty_from_lots(form, cdt, cdn, callback);
 			} else if (callback) {
@@ -63,11 +64,7 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn,
 	const basic_rate = flt(row.basic_rate);
 
 	// Material Transfer: one serial = one full pack (no unit breakdown on the line)
-	if (
-		frm &&
-		frm.doc.doctype === "Stock Entry" &&
-		frm.doc.purpose === "Material Transfer"
-	) {
+	if (frm && frm.doc.doctype === "Stock Entry" && frm.doc.purpose === "Material Transfer") {
 		qty = qty > 0 ? 1 : 0;
 	} else if (qty <= 1 && row_qty > 0) {
 		// Single partial pack — keep fractional qty from the row

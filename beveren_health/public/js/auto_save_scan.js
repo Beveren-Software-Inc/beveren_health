@@ -92,7 +92,12 @@ beveren_health.auto_save_scan.note_scan_and_maybe_save = function (frm, result, 
 /**
  * Reload after server-created child row, then apply interval save / refocus.
  */
-beveren_health.auto_save_scan.after_server_created_row = function (frm, result, refocus_fn, on_loaded) {
+beveren_health.auto_save_scan.after_server_created_row = function (
+	frm,
+	result,
+	refocus_fn,
+	on_loaded
+) {
 	frm.reload_doc().then(() => {
 		if (typeof on_loaded === "function") {
 			on_loaded();

@@ -15,9 +15,7 @@ IP_PRICE_LIST = "IP Selling"
 
 
 def _enabled() -> bool:
-	return bool(
-		frappe.db.get_single_value("Healthcare Settings", "auto_apply_patient_price_list")
-	)
+	return bool(frappe.db.get_single_value("Healthcare Settings", "auto_apply_patient_price_list"))
 
 
 def _is_inpatient(patient: str) -> bool:
@@ -26,11 +24,7 @@ def _is_inpatient(patient: str) -> bool:
 	status = frappe.db.get_value("Patient", patient, "inpatient_status")
 	if status == "Admitted":
 		return True
-	return bool(
-		frappe.db.exists(
-			"Inpatient Admission", {"patient": patient, "status": "Admitted"}
-		)
-	)
+	return bool(frappe.db.exists("Inpatient Admission", {"patient": patient, "status": "Admitted"}))
 
 
 def set_price_list_for_patient(doc, method=None) -> None:
@@ -43,8 +37,7 @@ def set_price_list_for_patient(doc, method=None) -> None:
 		return
 
 	# Never override a price list the user picked deliberately.
-	if doc.get("selling_price_list") not in (None, "", OP_PRICE_LIST, IP_PRICE_LIST,
-	                                         "Standard Selling"):
+	if doc.get("selling_price_list") not in (None, "", OP_PRICE_LIST, IP_PRICE_LIST, "Standard Selling"):
 		return
 
 	target = IP_PRICE_LIST if _is_inpatient(patient) else OP_PRICE_LIST

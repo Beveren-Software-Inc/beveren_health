@@ -25,9 +25,7 @@ class DispensingLot(Document):
 		batch_item = frappe.db.get_value("Batch", self.batch_no, "item")
 		if batch_item and batch_item != self.item:
 			frappe.throw(
-				_("Batch {0} belongs to item {1}, not {2}").format(
-					self.batch_no, batch_item, self.item
-				)
+				_("Batch {0} belongs to item {1}, not {2}").format(self.batch_no, batch_item, self.item)
 			)
 
 	def set_remaining_qty(self):

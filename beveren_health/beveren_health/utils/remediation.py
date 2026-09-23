@@ -63,8 +63,12 @@ def fix_receivable_account(apply: bool = False) -> dict:
 	# debtor children need account_type=Receivable to be usable
 	for acc in frappe.get_all(
 		"Account",
-		filters={"company": COMPANY, "is_group": 0, "name": ["like", "%RECEIVABLE%"],
-		         "account_type": ["in", ["", None]]},
+		filters={
+			"company": COMPANY,
+			"is_group": 0,
+			"name": ["like", "%RECEIVABLE%"],
+			"account_type": ["in", ["", None]],
+		},
 		pluck="name",
 	):
 		changes.append(f"Set account_type='Receivable' on {acc!r}")
@@ -128,12 +132,13 @@ def fix_asset_accounts(apply: bool = False) -> dict:
 	changes, blockers = [], []
 
 	accum = frappe.db.get_value(
-		"Account",
-		{"company": COMPANY, "is_group": 0, "name": ["like", "%ACCUMULATED DEP%"]}, "name")
+		"Account", {"company": COMPANY, "is_group": 0, "name": ["like", "%ACCUMULATED DEP%"]}, "name"
+	)
 	dep_expense = frappe.db.get_value(
 		"Account",
-		{"company": COMPANY, "is_group": 0, "name": ["like", "%DEPRECIATION%"],
-		 "root_type": "Expense"}, "name")
+		{"company": COMPANY, "is_group": 0, "name": ["like", "%DEPRECIATION%"], "root_type": "Expense"},
+		"name",
+	)
 
 	if not accum:
 		blockers.append("No 'ACCUMULATED DEPRECIATION' ledger exists - it must be created first.")
@@ -150,13 +155,15 @@ def fix_asset_accounts(apply: bool = False) -> dict:
 		if not row.accumulated_depreciation_account:
 			changes.append(f"{row.parent}: accumulated_depreciation_account -> {accum}")
 			if apply:
-				frappe.db.set_value("Asset Category Account", row.name,
-				                    "accumulated_depreciation_account", accum)
+				frappe.db.set_value(
+					"Asset Category Account", row.name, "accumulated_depreciation_account", accum
+				)
 		if not row.depreciation_expense_account:
 			changes.append(f"{row.parent}: depreciation_expense_account -> {dep_expense}")
 			if apply:
-				frappe.db.set_value("Asset Category Account", row.name,
-				                    "depreciation_expense_account", dep_expense)
+				frappe.db.set_value(
+					"Asset Category Account", row.name, "depreciation_expense_account", dep_expense
+				)
 
 	draft = frappe.db.count("Asset", {"docstatus": 0})
 	blockers.append(
@@ -176,8 +183,10 @@ def fix_payroll_accounts(apply: bool = False) -> dict:
 	payable = frappe.db.get_value(
 		"Account", {"company": COMPANY, "is_group": 0, "name": ["like", "%SALAR%PAYABLE%"]}, "name"
 	) or frappe.db.get_value(
-		"Account", {"company": COMPANY, "is_group": 0, "root_type": "Liability",
-		            "name": ["like", "%PAYABLE%"]}, "name")
+		"Account",
+		{"company": COMPANY, "is_group": 0, "root_type": "Liability", "name": ["like", "%PAYABLE%"]},
+		"name",
+	)
 
 	if payable and not frappe.db.get_value("Company", COMPANY, "default_payroll_payable_account"):
 		changes.append(f"Company.default_payroll_payable_account -> {payable}")
@@ -188,8 +197,7 @@ def fix_payroll_accounts(apply: bool = False) -> dict:
 
 	unmapped = []
 	for comp in frappe.get_all("Salary Component", fields=["name", "type"]):
-		if frappe.db.exists("Salary Component Account",
-		                    {"parent": comp.name, "company": COMPANY}):
+		if frappe.db.exists("Salary Component Account", {"parent": comp.name, "company": COMPANY}):
 			continue
 		unmapped.append(comp.name)
 	if unmapped:
@@ -211,9 +219,11 @@ def fix_payroll_accounts(apply: bool = False) -> dict:
 def fix_default_shifts(apply: bool = False, shift_type: str | None = None) -> dict:
 	changes, blockers = [], []
 
-	shift_type = shift_type or frappe.db.get_value(
-		"Shift Type", {"enable_auto_attendance": 1}, "name"
-	) or frappe.db.get_value("Shift Type", {}, "name")
+	shift_type = (
+		shift_type
+		or frappe.db.get_value("Shift Type", {"enable_auto_attendance": 1}, "name")
+		or frappe.db.get_value("Shift Type", {}, "name")
+	)
 	if not shift_type:
 		return _result("HR-021", apply, changes, ["No Shift Type exists."])
 
@@ -222,13 +232,10 @@ def fix_default_shifts(apply: bool = False, shift_type: str | None = None) -> di
 		filters={"status": "Active", "default_shift": ["in", [None, ""]]},
 		fields=["name", "employee_name"],
 	)
-	changes.append(
-		f"Set default_shift='{shift_type}' on {len(targets)} active employee(s) with none"
-	)
+	changes.append(f"Set default_shift='{shift_type}' on {len(targets)} active employee(s) with none")
 	if apply:
 		for emp in targets:
-			frappe.db.set_value("Employee", emp.name, "default_shift", shift_type,
-			                    update_modified=False)
+			frappe.db.set_value("Employee", emp.name, "default_shift", shift_type, update_modified=False)
 
 	checkins = frappe.db.count("Employee Checkin")
 	attendance = frappe.db.count("Attendance")
@@ -267,9 +274,7 @@ def fix_discount_caps(apply: bool = False, max_percent: float = 20.0) -> dict:
 	So this reports the single source of truth instead of duplicating it.
 	"""
 	enabled = frappe.db.get_single_value("Healthcare Settings", "require_discount_approval")
-	threshold = flt(
-		frappe.db.get_single_value("Healthcare Settings", "discount_approval_threshold_percent")
-	)
+	threshold = flt(frappe.db.get_single_value("Healthcare Settings", "discount_approval_threshold_percent"))
 	unset = [
 		p.name
 		for p in frappe.get_all("POS Profile", fields=["name", "custom_max_discount_percent"])
@@ -312,9 +317,7 @@ def fix_batch_expiry(apply: bool = False) -> dict:
 		for item in no_expiry:
 			frappe.db.set_value("Item", item, "has_expiry_date", 1, update_modified=False)
 
-	unbatched = frappe.db.count(
-		"Item", {"has_batch_no": 0, "disabled": 0, "is_stock_item": 1}
-	)
+	unbatched = frappe.db.count("Item", {"has_batch_no": 0, "disabled": 0, "is_stock_item": 1})
 	blockers.append(
 		f"{unbatched} stock items have no batch tracking at all. Turning it on retrospectively "
 		"breaks existing stock ledgers, so each must be reviewed for whether it is a medicine - "

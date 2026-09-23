@@ -310,9 +310,7 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 
 	if not dest_wh:
 		frappe.throw(
-			_("Target Warehouse is required on the row to transfer Dispensing Lot {0}").format(
-				serial_no
-			)
+			_("Target Warehouse is required on the row to transfer Dispensing Lot {0}").format(serial_no)
 		)
 
 	lot_name = _get_lot_name_by_serial(serial_no)
@@ -355,18 +353,16 @@ def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, sourc
 	"""Create a Dispensing Lot at the transfer destination when the serial is new."""
 	if not row.item_code or not row.batch_no:
 		frappe.throw(
-			_(
-				"Item and Batch are required to create Dispensing Lot for serial {0} on transfer."
-			).format(serial_no)
+			_("Item and Batch are required to create Dispensing Lot for serial {0} on transfer.").format(
+				serial_no
+			)
 		)
 
 	_validate_stock_row_batch_item(row)
 
 	serials = _serials_from_stock_row(row)
 	row_stock_qty = flt(row.get("qty")) or len(serials) or 1
-	lot_quantities = compute_dispensing_qty_per_serial(
-		row_stock_qty, serials, item_code=row.item_code
-	)
+	lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
 
 	try:
 		lot_qty = lot_quantities[serials.index(serial_no)]
@@ -374,9 +370,7 @@ def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, sourc
 		lot_qty = lot_quantities[0] if lot_quantities else 1
 
 	_pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
-	gtin = row.get("custom_gstin") or frappe.db.get_value(
-		"Item", row.item_code, "custom_gtin_number"
-	)
+	gtin = row.get("custom_gstin") or frappe.db.get_value("Item", row.item_code, "custom_gtin_number")
 	posting_date = doc.get("posting_date") or frappe.utils.today()
 
 	lot_name = _create_dispensing_lot_if_missing(
@@ -429,9 +423,7 @@ def _reverse_material_transfer_dispensing_lots(doc):
 			if not dest_wh or lot.warehouse != dest_wh:
 				continue
 
-			cancel_remark = _("Cancelled transfer {0} — returned to {1}").format(
-				doc.name, source_wh
-			)
+			cancel_remark = _("Cancelled transfer {0} — returned to {1}").format(doc.name, source_wh)
 			if any(
 				row.transaction_type == "Transfer"
 				and row.reference_name == doc.name
@@ -541,17 +533,13 @@ def create_dispensing_lots_on_submit(doc, method=None):
 		_pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
 		warehouse = get_warehouse_for_row(doc, row, config)
 
-		gtin = row.get("custom_gstin") or frappe.db.get_value(
-			"Item", row.item_code, "custom_gtin_number"
-		)
+		gtin = row.get("custom_gstin") or frappe.db.get_value("Item", row.item_code, "custom_gtin_number")
 
 		posting_date = doc.get("posting_date") or frappe.utils.today()
 		row_stock_qty = flt(row.get("qty")) or len(serials)
-		lot_quantities = compute_dispensing_qty_per_serial(
-			row_stock_qty, serials, item_code=row.item_code
-		)
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
 
-		for serial, lot_qty in zip(serials, lot_quantities):
+		for serial, lot_qty in zip(serials, lot_quantities, strict=False):
 			_create_dispensing_lot_if_missing(
 				item=row.item_code,
 				batch_no=row.batch_no,
@@ -669,9 +657,7 @@ def _restore_dispensing_lot_from_stock_doc(
 
 	in_qty = lot_qty - flt(lot.remaining_qty)
 
-	if in_qty > 0 and not _lot_has_reference_transaction(
-		lot, reference_doctype, reference_name, "In"
-	):
+	if in_qty > 0 and not _lot_has_reference_transaction(lot, reference_doctype, reference_name, "In"):
 		_append_lot_transaction(
 			lot,
 			transaction_type="In",
@@ -800,11 +786,9 @@ def build_expected_lot_quantities_for_stock_document(doc):
 			continue
 
 		row_stock_qty = flt(row.get("qty")) or len(serials)
-		lot_quantities = compute_dispensing_qty_per_serial(
-			row_stock_qty, serials, item_code=row.item_code
-		)
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
 
-		for serial, lot_qty in zip(serials, lot_quantities):
+		for serial, lot_qty in zip(serials, lot_quantities, strict=False):
 			by_serial[serial] = lot_qty
 			lot_name = _get_lot_name_by_serial(serial)
 			if lot_name:
@@ -845,10 +829,8 @@ def _expected_qty_for_lot(lot, expected_maps, doc):
 			continue
 
 		row_stock_qty = flt(row.get("qty")) or len(serials)
-		lot_quantities = compute_dispensing_qty_per_serial(
-			row_stock_qty, serials, item_code=row.item_code
-		)
-		for serial, lot_qty in zip(serials, lot_quantities):
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
+		for serial, lot_qty in zip(serials, lot_quantities, strict=False):
 			if serial in lot_tokens or _get_lot_name_by_serial(serial) == lot.name:
 				return lot_qty
 
@@ -1462,7 +1444,9 @@ def _recorded_lot_transaction(lot, reference_doctype, reference_name, transactio
 	return uom, qty
 
 
-def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference_name, posting_date, is_return=False):
+def apply_sales_invoice_to_dispensing_lot(
+	item_row, reference_doctype, reference_name, posting_date, is_return=False
+):
 	"""Post Out/In on each dispensing lot on this SI line (one pack per lot when multiple serials)."""
 	lot_names = _resolve_dispensing_lot_names_from_si_row(
 		item_row, reference_doctype=reference_doctype, reference_name=reference_name
@@ -1490,9 +1474,7 @@ def apply_sales_invoice_to_dispensing_lot(item_row, reference_doctype, reference
 			not is_return
 			and reference_doctype == "Sales Invoice"
 			and item_row.get("delivery_note")
-			and _lot_has_reference_transaction(
-				lot, "Delivery Note", item_row.get("delivery_note"), "Out"
-			)
+			and _lot_has_reference_transaction(lot, "Delivery Note", item_row.get("delivery_note"), "Out")
 		):
 			continue
 
@@ -1538,9 +1520,7 @@ def validate_sales_invoice_dispensing_lots(doc):
 
 		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
 			frappe.throw(
-				_("Dispensing Lot is required for Item {0} in row {1}.").format(
-					row.item_code, row.idx
-				)
+				_("Dispensing Lot is required for Item {0} in row {1}.").format(row.item_code, row.idx)
 			)
 
 		if not lot_names:
@@ -1632,9 +1612,7 @@ def reverse_sales_invoice_dispensing_lots(doc):
 
 			# Mirror what was posted: re-splitting now would give a different share
 			# per lot, because the original transaction already moved remaining_qty.
-			issue_uom, issue_qty = _recorded_lot_transaction(
-				lot, doc.doctype, doc.name, original_type
-			)
+			issue_uom, issue_qty = _recorded_lot_transaction(lot, doc.doctype, doc.name, original_type)
 			if not issue_qty:
 				issue_uom, issue_qty = compute_issue_from_sales_item(sale_row, lot)
 			if not issue_qty:
@@ -1669,9 +1647,7 @@ def validate_delivery_note_dispensing_lots(doc, method=None):
 
 		if require_lot and item_requires_dispensing_lot(row.item_code) and not lot_names:
 			frappe.throw(
-				_("Dispensing Lot is required for Item {0} in row {1}.").format(
-					row.item_code, row.idx
-				)
+				_("Dispensing Lot is required for Item {0} in row {1}.").format(row.item_code, row.idx)
 			)
 
 		if not lot_names:

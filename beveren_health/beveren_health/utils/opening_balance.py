@@ -57,8 +57,10 @@ def _temporary_opening(company: str) -> str:
 	)
 	if not account:
 		frappe.throw(
-			_("No Temporary account found for {0}. Create one (account type 'Temporary') "
-			  "before importing opening balances.").format(company)
+			_(
+				"No Temporary account found for {0}. Create one (account type 'Temporary') "
+				"before importing opening balances."
+			).format(company)
 		)
 	return account
 
@@ -104,9 +106,7 @@ def validate_rows(kind: str, rows, company: str | None = None) -> dict:
 			if not party:
 				errors.append(_("Row {0}: {1} is required.").format(idx, kind))
 			elif not frappe.db.exists(party_type, party):
-				errors.append(
-					_("Row {0}: {1} {2} does not exist.").format(idx, party_type, party)
-				)
+				errors.append(_("Row {0}: {1} {2} does not exist.").format(idx, party_type, party))
 
 	difference = round(total_debit - total_credit, 2)
 	if difference:
@@ -141,9 +141,7 @@ def create_opening_entry(
 
 	check = validate_rows(kind, rows, company)
 	if not check["ok"]:
-		frappe.throw(
-			_("Opening balances are not valid:<br>{0}").format("<br>".join(check["errors"]))
-		)
+		frappe.throw(_("Opening balances are not valid:<br>{0}").format("<br>".join(check["errors"])))
 
 	temporary = _temporary_opening(company)
 	receivable = frappe.db.get_value("Company", company, "default_receivable_account")

@@ -1,18 +1,16 @@
+frappe.ui.form.on("Stock Reconciliation", {
+	onload: function (frm) {
+		frm.current_focused_row = null;
 
+		setTimeout(function () {
+			setup_row_click_tracking(frm);
+		}, 500);
 
-frappe.ui.form.on('Stock Reconciliation', {
-    onload: function(frm) {
-        frm.current_focused_row = null;
-
-        setTimeout(function() {
-            setup_row_click_tracking(frm);
-        }, 500);
-
-        // Inject highlight CSS once
-        if (!document.getElementById('sr-scanner-style')) {
-            let style = document.createElement('style');
-            style.id = 'sr-scanner-style';
-            style.textContent = `
+		// Inject highlight CSS once
+		if (!document.getElementById("sr-scanner-style")) {
+			let style = document.createElement("style");
+			style.id = "sr-scanner-style";
+			style.textContent = `
                 .grid-row.row-highlight {
                     background-color: #fff3cd !important;
                     border-left: 4px solid #ffc107 !important;
@@ -22,25 +20,32 @@ frappe.ui.form.on('Stock Reconciliation', {
                     background-color: #fff8e1 !important;
                 }
             `;
-            document.head.appendChild(style);
-        }
-    },
+			document.head.appendChild(style);
+		}
+	},
 
-    refresh: function(frm) {
-        setTimeout(function() {
-            setup_row_click_tracking(frm);
-        }, 300);
-    
+	refresh: function (frm) {
+		setTimeout(function () {
+			setup_row_click_tracking(frm);
+		}, 300);
 
-    if (!frm.is_new()) {
-			frm.add_custom_button(__("Batch Label Print"), function () {
-				show_batch_range_dialog(frm);
-			}, __("Actions"));
+		if (!frm.is_new()) {
+			frm.add_custom_button(
+				__("Batch Label Print"),
+				function () {
+					show_batch_range_dialog(frm);
+				},
+				__("Actions")
+			);
 
 			if (frm.doc.docstatus === 1) {
-				frm.add_custom_button(__("Dispensing Lots"), function () {
-					show_dispensing_lots_for_reconciliation(frm);
-				}, __("Actions"));
+				frm.add_custom_button(
+					__("Dispensing Lots"),
+					function () {
+						show_dispensing_lots_for_reconciliation(frm);
+					},
+					__("Actions")
+				);
 
 				setup_dispensing_lot_qty_correction_button(frm);
 			}
@@ -52,58 +57,62 @@ frappe.ui.form.on('Stock Reconciliation', {
 			update_items: false,
 		});
 	},
-
 });
 
 function setup_row_click_tracking(frm) {
-    if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
-    let wrapper = frm.fields_dict['items'].grid.wrapper;
-    if (!wrapper) return;
-    wrapper.off('click.sr_scanner', '.grid-row');
-    wrapper.on('click.sr_scanner', '.grid-row', function() {
-        let idx = $(this).attr('data-idx');
-        if (idx) {
-            frm.current_focused_row = parseInt(idx) - 1;
-        }
-    });
+	if (!frm.fields_dict["items"] || !frm.fields_dict["items"].grid) return;
+	let wrapper = frm.fields_dict["items"].grid.wrapper;
+	if (!wrapper) return;
+	wrapper.off("click.sr_scanner", ".grid-row");
+	wrapper.on("click.sr_scanner", ".grid-row", function () {
+		let idx = $(this).attr("data-idx");
+		if (idx) {
+			frm.current_focused_row = parseInt(idx) - 1;
+		}
+	});
 }
 
 /** Fetch system stock for a row without overwriting scanned qty. */
 function sr_fetch_current_stock(frm, cdt, cdn, callback) {
-    const row = locals[cdt][cdn];
-    if (!row.item_code || !row.warehouse) {
-        callback && callback();
-        return;
-    }
+	const row = locals[cdt][cdn];
+	if (!row.item_code || !row.warehouse) {
+		callback && callback();
+		return;
+	}
 
-    frappe.call({
-        method: "erpnext.stock.doctype.stock_reconciliation.stock_reconciliation.get_stock_balance_for",
-        args: {
-            item_code: row.item_code,
-            warehouse: row.warehouse,
-            posting_date: frm.doc.posting_date,
-            posting_time: frm.doc.posting_time,
-            batch_no: row.batch_no,
-            row: row,
-            company: frm.doc.company,
-        },
-        callback: function(r) {
-            if (r.message) {
-                const rate = flt(r.message.rate);
-                const current_qty = flt(r.message.qty);
-                frappe.model.set_value(cdt, cdn, {
-                    valuation_rate: rate,
-                    current_qty: current_qty,
-                    current_valuation_rate: rate,
-                    current_amount: rate * current_qty,
-                }, () => {
-                    callback && callback();
-                });
-            } else {
-                callback && callback();
-            }
-        },
-    });
+	frappe.call({
+		method: "erpnext.stock.doctype.stock_reconciliation.stock_reconciliation.get_stock_balance_for",
+		args: {
+			item_code: row.item_code,
+			warehouse: row.warehouse,
+			posting_date: frm.doc.posting_date,
+			posting_time: frm.doc.posting_time,
+			batch_no: row.batch_no,
+			row: row,
+			company: frm.doc.company,
+		},
+		callback: function (r) {
+			if (r.message) {
+				const rate = flt(r.message.rate);
+				const current_qty = flt(r.message.qty);
+				frappe.model.set_value(
+					cdt,
+					cdn,
+					{
+						valuation_rate: rate,
+						current_qty: current_qty,
+						current_valuation_rate: rate,
+						current_amount: rate * current_qty,
+					},
+					() => {
+						callback && callback();
+					}
+				);
+			} else {
+				callback && callback();
+			}
+		},
+	});
 }
 
 /** After scan: load system stock into current_* fields, then qty/difference from lots. */
@@ -170,14 +179,21 @@ function sr_apply_scan_fields(frm, cdt, cdn, result, warehouse, callback) {
 					frappe.msgprint({
 						title: __("Batch Not Set"),
 						indicator: "orange",
-						message: __("Batch {0} could not be linked on the row. It may need to be created first.", [
-							result.batch_no,
-						]),
+						message: __(
+							"Batch {0} could not be linked on the row. It may need to be created first.",
+							[result.batch_no]
+						),
 					});
 				}
 
 				if (result.serial_no) {
-					frappe.model.set_value(cdt, cdn, "custom_dispensing_lot", result.serial_no, apply_metadata);
+					frappe.model.set_value(
+						cdt,
+						cdn,
+						"custom_dispensing_lot",
+						result.serial_no,
+						apply_metadata
+					);
 				} else {
 					frappe.model.set_value(cdt, cdn, "qty", 1, apply_metadata);
 				}
@@ -188,7 +204,7 @@ function sr_apply_scan_fields(frm, cdt, cdn, result, warehouse, callback) {
 
 // ─── Scanner field handler (same flow as Purchase Receipt custom_scanner) ─────
 
-frappe.ui.form.on('Stock Reconciliation Item', {
+frappe.ui.form.on("Stock Reconciliation Item", {
 	warehouse: function (frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		// SR cost center is header-only; set from row warehouse when default is blank
@@ -199,7 +215,7 @@ frappe.ui.form.on('Stock Reconciliation Item', {
 		}
 	},
 
-	custom_scanner: function(frm, cdt, cdn) {
+	custom_scanner: function (frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		let barcode = row.custom_scanner;
 
@@ -208,28 +224,38 @@ frappe.ui.form.on('Stock Reconciliation Item', {
 		let warehouse = frm.doc.set_warehouse;
 		if (!warehouse) {
 			frappe.msgprint(__("Please set a Warehouse on the form before scanning."));
-			frappe.model.set_value(cdt, cdn, 'custom_scanner', '');
+			frappe.model.set_value(cdt, cdn, "custom_scanner", "");
 			return;
 		}
 
-		let current_row_idx = frm.doc.items.findIndex(r => r.name === cdn);
-		frappe.model.set_value(cdt, cdn, 'custom_scanner', '');
+		let current_row_idx = frm.doc.items.findIndex((r) => r.name === cdn);
+		frappe.model.set_value(cdt, cdn, "custom_scanner", "");
 
 		const start_scan = () => {
 			sr_ensure_scan_mode(frm, () => {
 				if (frm.is_new()) {
 					frm.save_or_update({
-						callback: function() {
+						callback: function () {
 							sr_prepare_for_scan(frm);
-							process_scan(frm, cdt, cdn, locals[cdt][cdn], barcode, current_row_idx, warehouse);
+							process_scan(
+								frm,
+								cdt,
+								cdn,
+								locals[cdt][cdn],
+								barcode,
+								current_row_idx,
+								warehouse
+							);
 						},
-						error: function() {
+						error: function () {
 							frappe.msgprint({
-								title: __('Save Error'),
-								indicator: 'red',
-								message: __('Failed to save document. Please save manually and try again.')
+								title: __("Save Error"),
+								indicator: "red",
+								message: __(
+									"Failed to save document. Please save manually and try again."
+								),
 							});
-						}
+						},
 					});
 					return;
 				}
@@ -238,7 +264,7 @@ frappe.ui.form.on('Stock Reconciliation Item', {
 		};
 
 		start_scan();
-	}
+	},
 });
 
 function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
@@ -247,18 +273,18 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 		args: {
 			barcode_data: barcode,
 			document_name: frm.doc.name,
-			doctype: 'Stock Reconciliation',
+			doctype: "Stock Reconciliation",
 			current_item_code: row.item_code,
-			current_batch_no: row.batch_no || '',
+			current_batch_no: row.batch_no || "",
 			warehouse: warehouse,
 			current_row_name: row.name,
 		},
-		callback: function(r) {
+		callback: function (r) {
 			if (!r.message || !r.message.success) {
 				frappe.msgprint({
-					title: __('Scan Error'),
-					indicator: 'red',
-					message: (r.message && r.message.message) || 'Failed to process barcode'
+					title: __("Scan Error"),
+					indicator: "red",
+					message: (r.message && r.message.message) || "Failed to process barcode",
 				});
 				return;
 			}
@@ -281,13 +307,21 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 			};
 
 			switch (result.action) {
-				case 'assign_to_current':
-					handle_assign_to_current(frm, cdt, cdn, result, current_row_idx, warehouse, finish_scan);
+				case "assign_to_current":
+					handle_assign_to_current(
+						frm,
+						cdt,
+						cdn,
+						result,
+						current_row_idx,
+						warehouse,
+						finish_scan
+					);
 					break;
-				case 'append_serial':
+				case "append_serial":
 					handle_append_serial(frm, cdt, cdn, result, current_row_idx, finish_scan);
 					break;
-				case 'create_new_row': {
+				case "create_new_row": {
 					if (result.server_persisted) {
 						handle_create_new_row(frm, result, warehouse, null);
 					} else {
@@ -297,7 +331,7 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 					}
 					break;
 				}
-				case 'move_to_existing': {
+				case "move_to_existing": {
 					let target = handle_move_to_existing(frm, result, finish_scan);
 					if (target) {
 						final_cdt = target.cdt;
@@ -309,10 +343,10 @@ function process_scan(frm, cdt, cdn, row, barcode, current_row_idx, warehouse) {
 					finish_scan();
 			}
 		},
-		error: function(err) {
-			console.error('Scan error:', err);
-			frappe.msgprint(__('Error processing scan. Check server logs.'));
-		}
+		error: function (err) {
+			console.error("Scan error:", err);
+			frappe.msgprint(__("Error processing scan. Check server logs."));
+		},
 	});
 }
 
@@ -323,69 +357,75 @@ function save_and_refocus_scanner(frm, result) {
 }
 
 function refocus_scanner_field(frm, result) {
-    let target_row_idx = null;
-    let target_row_name = null;
-    
-    if (result.action === 'create_new_row') {
-        // For new row, focus on the newly created row
-        let target_row = frm.doc.items.find(r => r.batch_no === result.batch_no);
-        if (target_row) {
-            target_row_idx = frm.doc.items.findIndex(r => r.name === target_row.name);
-            target_row_name = target_row.name;
-        }
-    } else if (result.action === 'move_to_existing') {
-        // For move to existing, focus on the existing row
-        target_row_idx = result.existing_row_index;
-        if (target_row_idx !== undefined && frm.doc.items[target_row_idx]) {
-            target_row_name = frm.doc.items[target_row_idx].name;
-        }
-    } else {
-        // For assign_to_current and append_serial, focus on the current row
-        if (result.row_name) {
-            target_row_name = result.row_name;
-            target_row_idx = frm.doc.items.findIndex(r => r.name === result.row_name);
-        }
-    }
-    
-    // If we couldn't determine by row_name, try to find by batch_no
-    if (!target_row_name && result.batch_no) {
-        let target_row = frm.doc.items.find(r => r.batch_no === result.batch_no);
-        if (target_row) {
-            target_row_name = target_row.name;
-            target_row_idx = frm.doc.items.findIndex(r => r.name === target_row.name);
-        }
-    }
-    
-    // If we still don't have a target, use the current focused row
-    if (!target_row_name && frm.current_focused_row !== null && frm.doc.items[frm.current_focused_row]) {
-        target_row_name = frm.doc.items[frm.current_focused_row].name;
-        target_row_idx = frm.current_focused_row;
-    }
-    
-    // Focus on the scanner field of the target row
-    if (target_row_name) {
-        setTimeout(function() {
-            let grid = frm.fields_dict['items'].grid;
-            if (grid && grid.grid_rows_by_docname) {
-                let grid_row = grid.grid_rows_by_docname[target_row_name];
-                if (grid_row && grid_row.columns) {
-                    let scanner_field = grid_row.columns.find(col => col.fieldname === 'custom_scanner');
-                    if (scanner_field && scanner_field.$input) {
-                        scanner_field.$input.focus();
-                        if (target_row_idx !== null) {
-                            highlight_row(frm, target_row_idx);
-                            scroll_to_row(frm, target_row_idx);
-                        }
-                    } else {
-                        let $row = grid_row.$row;
-                        if ($row) {
-                            $row.find('input:first').focus();
-                        }
-                    }
-                }
-            }
-        }, 100);
-    }
+	let target_row_idx = null;
+	let target_row_name = null;
+
+	if (result.action === "create_new_row") {
+		// For new row, focus on the newly created row
+		let target_row = frm.doc.items.find((r) => r.batch_no === result.batch_no);
+		if (target_row) {
+			target_row_idx = frm.doc.items.findIndex((r) => r.name === target_row.name);
+			target_row_name = target_row.name;
+		}
+	} else if (result.action === "move_to_existing") {
+		// For move to existing, focus on the existing row
+		target_row_idx = result.existing_row_index;
+		if (target_row_idx !== undefined && frm.doc.items[target_row_idx]) {
+			target_row_name = frm.doc.items[target_row_idx].name;
+		}
+	} else {
+		// For assign_to_current and append_serial, focus on the current row
+		if (result.row_name) {
+			target_row_name = result.row_name;
+			target_row_idx = frm.doc.items.findIndex((r) => r.name === result.row_name);
+		}
+	}
+
+	// If we couldn't determine by row_name, try to find by batch_no
+	if (!target_row_name && result.batch_no) {
+		let target_row = frm.doc.items.find((r) => r.batch_no === result.batch_no);
+		if (target_row) {
+			target_row_name = target_row.name;
+			target_row_idx = frm.doc.items.findIndex((r) => r.name === target_row.name);
+		}
+	}
+
+	// If we still don't have a target, use the current focused row
+	if (
+		!target_row_name &&
+		frm.current_focused_row !== null &&
+		frm.doc.items[frm.current_focused_row]
+	) {
+		target_row_name = frm.doc.items[frm.current_focused_row].name;
+		target_row_idx = frm.current_focused_row;
+	}
+
+	// Focus on the scanner field of the target row
+	if (target_row_name) {
+		setTimeout(function () {
+			let grid = frm.fields_dict["items"].grid;
+			if (grid && grid.grid_rows_by_docname) {
+				let grid_row = grid.grid_rows_by_docname[target_row_name];
+				if (grid_row && grid_row.columns) {
+					let scanner_field = grid_row.columns.find(
+						(col) => col.fieldname === "custom_scanner"
+					);
+					if (scanner_field && scanner_field.$input) {
+						scanner_field.$input.focus();
+						if (target_row_idx !== null) {
+							highlight_row(frm, target_row_idx);
+							scroll_to_row(frm, target_row_idx);
+						}
+					} else {
+						let $row = grid_row.$row;
+						if ($row) {
+							$row.find("input:first").focus();
+						}
+					}
+				}
+			}
+		}, 100);
+	}
 }
 
 // ─── Case 1 (mirrors Purchase Receipt + SR warehouse / scan_mode fields) ───
@@ -412,7 +452,9 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse, on_
 		highlight_row(frm, row_idx);
 		scroll_to_row(frm, row_idx);
 		frappe.show_alert({
-			message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
+			message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${
+				result.serial_no || "N/A"
+			}`,
 			indicator: "green",
 		});
 		on_complete && on_complete();
@@ -426,14 +468,15 @@ function handle_assign_to_current(frm, cdt, cdn, result, row_idx, warehouse, on_
 		scroll_to_row(frm, row_idx);
 
 		frappe.show_alert({
-			message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
+			message: `✓ ${result.item_name} | Batch: ${result.batch_no} | SN: ${
+				result.serial_no || "N/A"
+			}`,
 			indicator: "green",
 		});
 
 		on_complete && on_complete();
 	});
 }
-
 
 // ─── Case 2 (mirrors Purchase Receipt) ───────────────────────────────────────
 
@@ -529,24 +572,31 @@ function handle_create_new_row(frm, result, warehouse, on_complete) {
 	const cdn = new_row.name;
 
 	sr_apply_scan_fields(frm, cdt, cdn, result, warehouse, () => {
-		frappe.model.set_value(cdt, cdn, {
-			valuation_rate: result.valuation_rate || result.rate || 0,
-			qty: result.qty || 1,
-		}, () => {
-			frm.refresh_field("items");
+		frappe.model.set_value(
+			cdt,
+			cdn,
+			{
+				valuation_rate: result.valuation_rate || result.rate || 0,
+				qty: result.qty || 1,
+			},
+			() => {
+				frm.refresh_field("items");
 
-			let new_idx = frm.doc.items.findIndex((r) => r.name === cdn);
-			frm.current_focused_row = new_idx;
-			highlight_row(frm, new_idx);
-			scroll_to_row(frm, new_idx);
+				let new_idx = frm.doc.items.findIndex((r) => r.name === cdn);
+				frm.current_focused_row = new_idx;
+				highlight_row(frm, new_idx);
+				scroll_to_row(frm, new_idx);
 
-			frappe.show_alert({
-				message: `✓ New row | Batch: ${result.batch_no} | SN: ${result.serial_no || "N/A"}`,
-				indicator: "orange",
-			});
+				frappe.show_alert({
+					message: `✓ New row | Batch: ${result.batch_no} | SN: ${
+						result.serial_no || "N/A"
+					}`,
+					indicator: "orange",
+				});
 
-			on_complete && on_complete();
-		});
+				on_complete && on_complete();
+			}
+		);
 	});
 
 	new_row.doctype = cdt;
@@ -638,43 +688,45 @@ function handle_move_to_existing(frm, result, on_complete) {
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 function highlight_row(frm, row_idx) {
-    setTimeout(function() {
-        if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
-        let $rows = frm.fields_dict['items'].grid.wrapper.find('.grid-row');
-        $rows.removeClass('row-highlight');
-        if ($rows[row_idx]) {
-            $($rows[row_idx]).addClass('row-highlight');
-        }
-    }, 150);
+	setTimeout(function () {
+		if (!frm.fields_dict["items"] || !frm.fields_dict["items"].grid) return;
+		let $rows = frm.fields_dict["items"].grid.wrapper.find(".grid-row");
+		$rows.removeClass("row-highlight");
+		if ($rows[row_idx]) {
+			$($rows[row_idx]).addClass("row-highlight");
+		}
+	}, 150);
 }
 
 function scroll_to_row(frm, row_idx) {
-    setTimeout(function() {
-        if (!frm.fields_dict['items'] || !frm.fields_dict['items'].grid) return;
-        
-        let $rows = frm.fields_dict['items'].grid.wrapper.find('.grid-row');
-        
-        if ($rows.length > row_idx && $rows[row_idx]) {
-            let rowElement = $rows[row_idx];
-            
-            if (rowElement && typeof rowElement.scrollIntoView === 'function') {
-                rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else if (rowElement && rowElement[0] && typeof rowElement[0].scrollIntoView === 'function') {
-                rowElement[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-            } else if (rowElement && rowElement.length && rowElement[0]) {
-                rowElement[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }
-        }
-    }, 200);
-}
+	setTimeout(function () {
+		if (!frm.fields_dict["items"] || !frm.fields_dict["items"].grid) return;
 
+		let $rows = frm.fields_dict["items"].grid.wrapper.find(".grid-row");
+
+		if ($rows.length > row_idx && $rows[row_idx]) {
+			let rowElement = $rows[row_idx];
+
+			if (rowElement && typeof rowElement.scrollIntoView === "function") {
+				rowElement.scrollIntoView({ behavior: "smooth", block: "center" });
+			} else if (
+				rowElement &&
+				rowElement[0] &&
+				typeof rowElement[0].scrollIntoView === "function"
+			) {
+				rowElement[0].scrollIntoView({ behavior: "smooth", block: "center" });
+			} else if (rowElement && rowElement.length && rowElement[0]) {
+				rowElement[0].scrollIntoView({ behavior: "smooth", block: "center" });
+			}
+		}
+	}, 200);
+}
 
 // ─── Dispensing lots linked to this reconciliation ─────────────────────────────
 
 function setup_dispensing_lot_qty_correction_button(frm) {
 	frappe.call({
-		method:
-			"beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
+		method: "beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
 		args: {
 			source_doctype: frm.doc.doctype,
 			source_document: frm.doc.name,
@@ -686,9 +738,13 @@ function setup_dispensing_lot_qty_correction_button(frm) {
 				return;
 			}
 
-			frm.add_custom_button(__("Correct Lot Quantities"), function () {
-				run_dispensing_lot_qty_correction(frm);
-			}, __("Actions"));
+			frm.add_custom_button(
+				__("Correct Lot Quantities"),
+				function () {
+					run_dispensing_lot_qty_correction(frm);
+				},
+				__("Actions")
+			);
 		},
 	});
 }
@@ -704,9 +760,13 @@ function build_lot_correction_table_rows(lots, include_reason) {
 			let row = `<tr>
 				<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.serial_no || lot.name || "")}</td>
 				<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
-				<td style="padding:4px 8px; text-align:right;">${frappe.utils.escape_html(format_lot_qty_change(lot))}</td>`;
+				<td style="padding:4px 8px; text-align:right;">${frappe.utils.escape_html(
+					format_lot_qty_change(lot)
+				)}</td>`;
 			if (include_reason) {
-				row += `<td style="padding:4px 8px;">${frappe.utils.escape_html(lot.reason || "")}</td>`;
+				row += `<td style="padding:4px 8px;">${frappe.utils.escape_html(
+					lot.reason || ""
+				)}</td>`;
 			}
 			row += "</tr>";
 			return row;
@@ -720,23 +780,31 @@ function build_lot_correction_summary_html(fixable, skipped, unchanged, full_det
 	if (fixable.length) {
 		sections.push(`<p><strong>${__("Will update")}</strong></p>
 			<table class="table table-bordered" style="font-size:12px;">
-				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th></tr></thead>
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__(
+			"Qty change"
+		)}</th></tr></thead>
 				<tbody>${build_lot_correction_table_rows(fixable, false)}</tbody>
 			</table>`);
 	}
 
 	const skipped_with_qty = skipped.filter((s) => s.expected_qty != null);
 	if (skipped_with_qty.length && full_detail) {
-		sections.push(`<p style="margin-top:12px;"><strong>${__("Cannot update (already used or not Active)")}</strong></p>
+		sections.push(`<p style="margin-top:12px;"><strong>${__(
+			"Cannot update (already used or not Active)"
+		)}</strong></p>
 			<table class="table table-bordered" style="font-size:12px;">
-				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty change")}</th><th>${__("Reason")}</th></tr></thead>
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__(
+			"Qty change"
+		)}</th><th>${__("Reason")}</th></tr></thead>
 				<tbody>${build_lot_correction_table_rows(skipped_with_qty, true)}</tbody>
 			</table>`);
 	} else if (skipped_with_qty.length) {
-		sections.push(`<p class="text-muted" style="margin-top:12px;">${__(
-			"{0} lot(s) need changes but cannot be updated (already used or not Active). Open Dispensing Lots to review.",
-			[skipped_with_qty.length]
-		)}</p>`);
+		sections.push(
+			`<p class="text-muted" style="margin-top:12px;">${__(
+				"{0} lot(s) need changes but cannot be updated (already used or not Active). Open Dispensing Lots to review.",
+				[skipped_with_qty.length]
+			)}</p>`
+		);
 	}
 
 	if (full_detail && unchanged.length) {
@@ -744,27 +812,39 @@ function build_lot_correction_summary_html(fixable, skipped, unchanged, full_det
 			(lot) => flt(lot.current_qty) !== flt(lot.expected_qty)
 		);
 		const show_unchanged = mismatched_unchanged.length ? mismatched_unchanged : unchanged;
-		sections.push(`<p style="margin-top:12px;"><strong>${__("Already matches expected")} (${show_unchanged.length})</strong></p>
+		sections.push(`<p style="margin-top:12px;"><strong>${__("Already matches expected")} (${
+			show_unchanged.length
+		})</strong></p>
 			<table class="table table-bordered" style="font-size:12px;">
-				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__("Qty")}</th></tr></thead>
+				<thead><tr><th>${__("Serial")}</th><th>${__("Item")}</th><th style="text-align:right;">${__(
+			"Qty"
+		)}</th></tr></thead>
 				<tbody>${show_unchanged
 					.map(
 						(lot) =>
-							`<tr><td>${frappe.utils.escape_html(lot.serial_no || lot.name || "")}</td>` +
+							`<tr><td>${frappe.utils.escape_html(
+								lot.serial_no || lot.name || ""
+							)}</td>` +
 							`<td>${frappe.utils.escape_html(lot.item || "")}</td>` +
-							`<td style="text-align:right;">${flt(lot.current_qty)} ${frappe.utils.escape_html(lot.uom || "")}</td></tr>`
+							`<td style="text-align:right;">${flt(
+								lot.current_qty
+							)} ${frappe.utils.escape_html(lot.uom || "")}</td></tr>`
 					)
 					.join("")}</tbody>
 			</table>`);
 	}
 
 	if (!fixable.length && !sections.length) {
-		return `<p>${__("All dispensing lot quantities already match this Stock Reconciliation.")}</p>`;
+		return `<p>${__(
+			"All dispensing lot quantities already match this Stock Reconciliation."
+		)}</p>`;
 	}
 
 	if (fixable.length) {
 		sections.push(
-			`<p class="text-muted" style="margin-top:8px;">${__("Only unused Active lots are updated.")}</p>`
+			`<p class="text-muted" style="margin-top:8px;">${__(
+				"Only unused Active lots are updated."
+			)}</p>`
 		);
 	}
 
@@ -773,8 +853,7 @@ function build_lot_correction_summary_html(fixable, skipped, unchanged, full_det
 
 function run_dispensing_lot_qty_correction(frm) {
 	frappe.call({
-		method:
-			"beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
+		method: "beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_qty_corrections",
 		args: {
 			source_doctype: frm.doc.doctype,
 			source_document: frm.doc.name,
@@ -801,8 +880,7 @@ function run_dispensing_lot_qty_correction(frm) {
 				${build_lot_correction_summary_html(fixable, skipped, unchanged, false)}`,
 				() => {
 					frappe.call({
-						method:
-							"beveren_health.beveren_health.customize.dispensing_lot.correct_dispensing_lot_quantities",
+						method: "beveren_health.beveren_health.customize.dispensing_lot.correct_dispensing_lot_quantities",
 						args: {
 							source_doctype: frm.doc.doctype,
 							source_document: frm.doc.name,
@@ -844,8 +922,7 @@ function run_dispensing_lot_qty_correction(frm) {
 
 function show_dispensing_lots_for_reconciliation(frm) {
 	frappe.call({
-		method:
-			"beveren_health.beveren_health.customize.dispensing_lot.get_dispensing_lots_for_stock_document",
+		method: "beveren_health.beveren_health.customize.dispensing_lot.get_dispensing_lots_for_stock_document",
 		args: {
 			source_doctype: frm.doc.doctype,
 			source_document: frm.doc.name,
@@ -853,13 +930,17 @@ function show_dispensing_lots_for_reconciliation(frm) {
 		callback(r) {
 			const lots = r.message || [];
 			if (!lots.length) {
-				frappe.msgprint(__("No dispensing lots were created from this Stock Reconciliation."));
+				frappe.msgprint(
+					__("No dispensing lots were created from this Stock Reconciliation.")
+				);
 				return;
 			}
 
 			const rows = lots
 				.map((lot) => {
-					const qty_label = `${flt(lot.remaining_qty)} / ${flt(lot.initial_qty)} ${lot.uom || ""}`.trim();
+					const qty_label = `${flt(lot.remaining_qty)} / ${flt(lot.initial_qty)} ${
+						lot.uom || ""
+					}`.trim();
 					return `
 						<tr>
 							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.item || "")}</td>
@@ -868,7 +949,9 @@ function show_dispensing_lots_for_reconciliation(frm) {
 							<td style="padding:6px 8px; text-align:right;">${frappe.utils.escape_html(qty_label)}</td>
 							<td style="padding:6px 8px;">${frappe.utils.escape_html(lot.status || "")}</td>
 							<td style="padding:6px 8px; text-align:center;">
-								<button type="button" class="btn btn-xs btn-default open-dl-lot" data-lot="${frappe.utils.escape_html(lot.name)}">
+								<button type="button" class="btn btn-xs btn-default open-dl-lot" data-lot="${frappe.utils.escape_html(
+									lot.name
+								)}">
 									${__("Open")}
 								</button>
 							</td>
@@ -919,7 +1002,6 @@ function show_dispensing_lots_for_reconciliation(frm) {
 	});
 }
 
-
 // Batch printing
 const RECON_LABEL_CSS = `
 	body { font-family: Arial, sans-serif; margin: 0; padding: 0; box-sizing: border-box; }
@@ -940,7 +1022,8 @@ const RECON_LABEL_CSS = `
 function build_recon_label_html(data, branch_display) {
 	const item_code = data.item_code || "N/A";
 	const item_name_line_val = data.item_name_line || "N/A";
-	const standard_selling_price = data.standard_selling_price != null ? data.standard_selling_price : "N/A";
+	const standard_selling_price =
+		data.standard_selling_price != null ? data.standard_selling_price : "N/A";
 	const batch_number = data.batch_no || "N/A";
 	const expiry_date = data.expiry_date != null ? data.expiry_date : "N/A";
 	const branch = branch_display || "N/A";
@@ -967,12 +1050,12 @@ function show_batch_range_dialog(frm) {
 	// Determine max possible row count
 	const items = frm.doc.items || [];
 	const max_rows = items.length;
- 
+
 	if (max_rows === 0) {
 		frappe.msgprint(__("No items found in this Stock Reconciliation."));
 		return;
 	}
- 
+
 	const d = new frappe.ui.Dialog({
 		title: __("Select Item Row Range for Label Printing"),
 		fields: [
@@ -1013,25 +1096,25 @@ function show_batch_range_dialog(frm) {
 		primary_action(values) {
 			const from_row = Math.max(1, parseInt(values.from_row, 10) || 1);
 			const to_row = Math.min(max_rows, parseInt(values.to_row, 10) || max_rows);
- 
+
 			if (from_row > to_row) {
 				frappe.msgprint(__("'From Row' must be less than or equal to 'To Row'."));
 				return;
 			}
- 
+
 			d.hide();
 			const selected_items = items.slice(from_row - 1, to_row);
 			show_label_table_dialog(frm, selected_items, values.cost_center || "");
 		},
 	});
- 
+
 	d.show();
 }
- 
+
 function show_label_table_dialog(frm, selected_items, cost_center) {
 	// Build table HTML for the dialog
 	const table_id = "recon_label_table_" + frappe.utils.get_random(5);
- 
+
 	const fields = [
 		{
 			fieldname: "label_table_html",
@@ -1040,7 +1123,7 @@ function show_label_table_dialog(frm, selected_items, cost_center) {
 			options: build_label_table_html(selected_items, table_id),
 		},
 	];
- 
+
 	const d2 = new frappe.ui.Dialog({
 		title: __("Review & Print Labels"),
 		fields: fields,
@@ -1057,26 +1140,33 @@ function show_label_table_dialog(frm, selected_items, cost_center) {
 			execute_label_print(frm, print_rows, cost_center);
 		},
 	});
- 
+
 	d2.show();
 	// Style the dialog body for better table display
 	$(d2.wrapper).find(".modal-dialog").css("max-width", "900px");
 }
- 
+
 function build_label_table_html(selected_items, table_id) {
-	const rows = selected_items.map((item, idx) => {
-		const row_num = idx + 1;
-		const item_code = item.item_code || "";
-		const item_name = item.item_name || "";
-		const batch_no = item.batch_no || "";
-		const qty = flt(item.qty, 0) || 0;
- 
-		return `
-			<tr data-idx="${idx}" data-item-code="${frappe.utils.escape_html(item_code)}" data-batch-no="${frappe.utils.escape_html(batch_no)}">
+	const rows = selected_items
+		.map((item, idx) => {
+			const row_num = idx + 1;
+			const item_code = item.item_code || "";
+			const item_name = item.item_name || "";
+			const batch_no = item.batch_no || "";
+			const qty = flt(item.qty, 0) || 0;
+
+			return `
+			<tr data-idx="${idx}" data-item-code="${frappe.utils.escape_html(
+				item_code
+			)}" data-batch-no="${frappe.utils.escape_html(batch_no)}">
 				<td style="text-align:center; padding: 6px 8px; font-size:12px; color:#888;">${row_num}</td>
-				<td style="padding: 6px 8px; font-size:13px; font-weight:500;">${frappe.utils.escape_html(item_code)}</td>
+				<td style="padding: 6px 8px; font-size:13px; font-weight:500;">${frappe.utils.escape_html(
+					item_code
+				)}</td>
 				<td style="padding: 6px 8px; font-size:13px;">${frappe.utils.escape_html(item_name)}</td>
-				<td style="padding: 6px 8px; font-size:13px; font-family:monospace;">${frappe.utils.escape_html(batch_no)}</td>
+				<td style="padding: 6px 8px; font-size:13px; font-family:monospace;">${frappe.utils.escape_html(
+					batch_no
+				)}</td>
 				<td style="padding: 6px 8px; font-size:13px; text-align:center;">${qty}</td>
 				<td style="padding: 6px 8px; text-align:center;">
 					<input
@@ -1091,14 +1181,15 @@ function build_label_table_html(selected_items, table_id) {
 				</td>
 			</tr>
 		`;
-	}).join("");
- 
-	const missing_batch_note = selected_items.some(i => !i.batch_no)
+		})
+		.join("");
+
+	const missing_batch_note = selected_items.some((i) => !i.batch_no)
 		? `<div style="background:#fff3cd; border:1px solid #ffc107; border-radius:4px; padding:8px 12px; margin-bottom:10px; font-size:12px; color:#856404;">
 				<strong>Note:</strong> Some rows have no Batch No — those rows will be skipped during printing.
 			</div>`
 		: "";
- 
+
 	return `
 		${missing_batch_note}
 		<div style="overflow-x:auto;">
@@ -1123,12 +1214,12 @@ function build_label_table_html(selected_items, table_id) {
 		</div>
 	`;
 }
- 
+
 function get_print_rows_from_table(table_id, selected_items) {
 	const print_rows = [];
 	const inputs = document.querySelectorAll(`#${table_id} .print-qty-input`);
- 
-	inputs.forEach(input => {
+
+	inputs.forEach((input) => {
 		const idx = parseInt(input.getAttribute("data-idx"), 10);
 		const print_qty = Math.max(0, parseInt(input.value, 10) || 0);
 		const item = selected_items[idx];
@@ -1140,14 +1231,14 @@ function get_print_rows_from_table(table_id, selected_items) {
 			});
 		}
 	});
- 
+
 	return print_rows;
 }
- 
+
 function execute_label_print(frm, print_rows, cost_center) {
 	// Resolve branch display name, then fetch label data for each batch
 	let branch_display = cost_center;
- 
+
 	const resolve_branch = new Promise((resolve) => {
 		if (!cost_center) {
 			resolve(branch_display);
@@ -1165,33 +1256,38 @@ function execute_label_print(frm, print_rows, cost_center) {
 			},
 		});
 	});
- 
+
 	resolve_branch.then((branch) => {
 		// Fetch label data for all unique batches in parallel
-		const unique_batches = [...new Set(print_rows.map(r => r.batch_no))];
+		const unique_batches = [...new Set(print_rows.map((r) => r.batch_no))];
 		const batch_data_map = {};
 		let completed = 0;
 		const total = unique_batches.length;
- 
+
 		if (total === 0) {
 			frappe.msgprint(__("No batches to print."));
 			return;
 		}
- 
+
 		frappe.show_progress(__("Loading label data..."), 0, total, __("Please wait..."));
- 
-		unique_batches.forEach(batch_name => {
+
+		unique_batches.forEach((batch_name) => {
 			frappe.call({
 				method: "beveren_health.beveren_health.utils.label_printing.get_label_data_for_batch",
 				args: { batch_name: batch_name },
 				callback(r) {
 					completed++;
-					frappe.show_progress(__("Loading label data..."), completed, total, __("Please wait..."));
- 
+					frappe.show_progress(
+						__("Loading label data..."),
+						completed,
+						total,
+						__("Please wait...")
+					);
+
 					if (r.message) {
 						batch_data_map[batch_name] = r.message;
 					}
- 
+
 					if (completed === total) {
 						frappe.hide_progress();
 						render_labels(print_rows, batch_data_map, branch);
@@ -1199,7 +1295,12 @@ function execute_label_print(frm, print_rows, cost_center) {
 				},
 				error() {
 					completed++;
-					frappe.show_progress(__("Loading label data..."), completed, total, __("Please wait..."));
+					frappe.show_progress(
+						__("Loading label data..."),
+						completed,
+						total,
+						__("Please wait...")
+					);
 					if (completed === total) {
 						frappe.hide_progress();
 						render_labels(print_rows, batch_data_map, branch);
@@ -1209,12 +1310,12 @@ function execute_label_print(frm, print_rows, cost_center) {
 		});
 	});
 }
- 
+
 function render_labels(print_rows, batch_data_map, branch_display) {
 	const labels_html = [];
 	const skipped = [];
- 
-	print_rows.forEach(row => {
+
+	print_rows.forEach((row) => {
 		const data = batch_data_map[row.batch_no];
 		if (!data) {
 			skipped.push(row.batch_no + " (no label data)");
@@ -1227,33 +1328,37 @@ function render_labels(print_rows, batch_data_map, branch_display) {
 		for (let i = 0; i < row.print_qty; i++) {
 			labels_html.push(
 				'<div class="label-page">' +
-				build_recon_label_html(data, branch_display) +
-				"</div>"
+					build_recon_label_html(data, branch_display) +
+					"</div>"
 			);
 		}
 	});
- 
+
 	if (labels_html.length === 0) {
 		frappe.msgprint(
 			__("No printable labels found. Ensure barcodes are set for the selected batches.") +
-			(skipped.length ? "<br><br>Skipped: " + skipped.join(", ") : "")
+				(skipped.length ? "<br><br>Skipped: " + skipped.join(", ") : "")
 		);
 		return;
 	}
- 
+
 	if (skipped.length) {
 		frappe.show_alert({
-			message: __("Skipped {0} batch(es) with missing data: {1}", [skipped.length, skipped.join(", ")]),
+			message: __("Skipped {0} batch(es) with missing data: {1}", [
+				skipped.length,
+				skipped.join(", "),
+			]),
 			indicator: "orange",
 		});
 	}
- 
+
 	const w = window.open("", "_blank");
 	w.document.write(
-		"<html><head><style>" + RECON_LABEL_CSS + "</style></head><body>" +
-		labels_html.join("") +
-		'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};<\/script></body></html>'
+		"<html><head><style>" +
+			RECON_LABEL_CSS +
+			"</style></head><body>" +
+			labels_html.join("") +
+			"<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();};};</script></body></html>"
 	);
 	w.document.close();
 }
- 

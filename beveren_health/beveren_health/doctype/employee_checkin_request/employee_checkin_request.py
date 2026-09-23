@@ -60,9 +60,7 @@ class EmployeeCheckinRequest(Document):
 						"Cancel that Attendance first."
 					).format(frappe.get_desk_link("Attendance", attendance))
 				)
-			frappe.delete_doc(
-				"Employee Checkin", self.employee_checkin, force=1, ignore_permissions=True
-			)
+			frappe.delete_doc("Employee Checkin", self.employee_checkin, force=1, ignore_permissions=True)
 		self.db_set({"status": "Cancelled", "employee_checkin": None})
 
 	# ------------------------------------------------------------------ helpers
@@ -162,9 +160,7 @@ class EmployeeCheckinRequest(Document):
 		checkin.insert(ignore_permissions=True)
 
 		frappe.msgprint(
-			_("Employee Checkin {0} created.").format(
-				frappe.get_desk_link("Employee Checkin", checkin.name)
-			),
+			_("Employee Checkin {0} created.").format(frappe.get_desk_link("Employee Checkin", checkin.name)),
 			alert=True,
 		)
 		return checkin.name

@@ -1,14 +1,14 @@
 # Copyright (c) 2026, Beveren Software and contributors
 # For license information, please see license.txt
 
-import frappe
 from datetime import date
-from frappe.utils import getdate, add_months, flt
+
+import frappe
 from frappe.model.document import Document
+from frappe.utils import add_months, flt, getdate
 
 
 class LessTimeCompensation(Document):
-    
 	def before_save(doc):
 		total_less_time = 0.0
 		total_overtime = 0.0
@@ -47,55 +47,53 @@ class LessTimeCompensation(Document):
 
 @frappe.whitelist()
 def get_compensation_data(from_date, to_date, employee):
-    result = []
-    prev_month_date = add_months(getdate(from_date), -1)
-    lt_start_date = prev_month_date.replace(day=21)
-    lt_end_date = getdate(to_date).replace(day=20)
-    # Less Time Entries
-    less_time_entries = frappe.get_all(
-        "Less Time Entry",
-        filters={
-            "employee": employee,
-            "start_date": ["between", [lt_start_date, lt_end_date]],
-            "docstatus": 1
-        },
-        fields=["name", "start_date", "end_date", "total_less_time_duration"]
-    )
+	result = []
+	prev_month_date = add_months(getdate(from_date), -1)
+	lt_start_date = prev_month_date.replace(day=21)
+	lt_end_date = getdate(to_date).replace(day=20)
+	# Less Time Entries
+	less_time_entries = frappe.get_all(
+		"Less Time Entry",
+		filters={
+			"employee": employee,
+			"start_date": ["between", [lt_start_date, lt_end_date]],
+			"docstatus": 1,
+		},
+		fields=["name", "start_date", "end_date", "total_less_time_duration"],
+	)
 
-    for d in less_time_entries:
-        result.append({
-            "reference_doctype": "Less Time Entry",
-            "reference_name": d.name,
-            "from_date": d.start_date,
-            "to_date": d.end_date,
-            "less_time_duration": float(d.total_less_time_duration or 0),
-            "overtime_duration": 0.0
-        })
+	for d in less_time_entries:
+		result.append(
+			{
+				"reference_doctype": "Less Time Entry",
+				"reference_name": d.name,
+				"from_date": d.start_date,
+				"to_date": d.end_date,
+				"less_time_duration": float(d.total_less_time_duration or 0),
+				"overtime_duration": 0.0,
+			}
+		)
 
-    # Overtime Slips
-    overtime_slips = frappe.get_all(
-        "Overtime Slip",
-        filters={
-            "employee": employee,
-            "start_date": ["between", [from_date, to_date]],
-            "docstatus": 1
-        },
-        fields=["name", "start_date", "end_date", "total_overtime_duration"]
-    )
+	# Overtime Slips
+	overtime_slips = frappe.get_all(
+		"Overtime Slip",
+		filters={"employee": employee, "start_date": ["between", [from_date, to_date]], "docstatus": 1},
+		fields=["name", "start_date", "end_date", "total_overtime_duration"],
+	)
 
-    for d in overtime_slips:
-        result.append({
-            "reference_doctype": "Overtime Slip",
-            "reference_name": d.name,
-            "from_date": d.start_date,
-            "to_date": d.end_date,
-            "less_time_duration": 0.0,
-            "overtime_duration": float(d.total_overtime_duration or 0)
-        })
+	for d in overtime_slips:
+		result.append(
+			{
+				"reference_doctype": "Overtime Slip",
+				"reference_name": d.name,
+				"from_date": d.start_date,
+				"to_date": d.end_date,
+				"less_time_duration": 0.0,
+				"overtime_duration": float(d.total_overtime_duration or 0),
+			}
+		)
 
-    # Sort by from_date if you want
-    result.sort(key=lambda x: x["from_date"])
-    print(result)
-    return result
-
-
+	# Sort by from_date if you want
+	result.sort(key=lambda x: x["from_date"])
+	print(result)
+	return result

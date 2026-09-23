@@ -20,7 +20,8 @@ const BATCH_LABEL_CSS = `
 function build_batch_label_html(data, cost_center) {
 	const item_code = data.item_code || "N/A";
 	const item_name_line_val = data.item_name_line || "N/A";
-	const standard_selling_price = data.standard_selling_price != null ? data.standard_selling_price : "N/A";
+	const standard_selling_price =
+		data.standard_selling_price != null ? data.standard_selling_price : "N/A";
 	const batch_number = data.batch_no || "N/A";
 	const expiry_date = data.expiry_date != null ? data.expiry_date : "N/A";
 	const branch = cost_center || "N/A";
@@ -45,88 +46,95 @@ function build_batch_label_html(data, cost_center) {
 frappe.ui.form.on("Batch", {
 	refresh(frm) {
 		if (!frm.is_new()) {
-			frm.add_custom_button(__("Label Print"), function () {
-				const batch_qty = flt(frm.doc.batch_qty, 0);
-				const default_qty = batch_qty > 0 ? batch_qty : 1;
+			frm.add_custom_button(
+				__("Label Print"),
+				function () {
+					const batch_qty = flt(frm.doc.batch_qty, 0);
+					const default_qty = batch_qty > 0 ? batch_qty : 1;
 
-				const d = new frappe.ui.Dialog({
-					title: __("Print Labels"),
-					fields: [
-						{
-							fieldname: "num_labels",
-							fieldtype: "Int",
-							label: __("Number of Labels"),
-							default: default_qty,
-							reqd: 1,
-							description: __("Default: batch quantity or 1"),
-						},
-						{
-							fieldname: "cost_center",
-							fieldtype: "Link",
-							label: __("Branch (Cost Center)"),
-							options: "Cost Center",
-							description: __("Shown as Branch on the label"),
-						},
-					],
-					primary_action_label: __("Print"),
-					primary_action(values) {
-						d.hide();
-						const num = Math.max(1, parseInt(values.num_labels, 10) || 1);
-						let branch_display = values.cost_center || "";
+					const d = new frappe.ui.Dialog({
+						title: __("Print Labels"),
+						fields: [
+							{
+								fieldname: "num_labels",
+								fieldtype: "Int",
+								label: __("Number of Labels"),
+								default: default_qty,
+								reqd: 1,
+								description: __("Default: batch quantity or 1"),
+							},
+							{
+								fieldname: "cost_center",
+								fieldtype: "Link",
+								label: __("Branch (Cost Center)"),
+								options: "Cost Center",
+								description: __("Shown as Branch on the label"),
+							},
+						],
+						primary_action_label: __("Print"),
+						primary_action(values) {
+							d.hide();
+							const num = Math.max(1, parseInt(values.num_labels, 10) || 1);
+							let branch_display = values.cost_center || "";
 
-						if (values.cost_center) {
+							if (values.cost_center) {
+								frappe.call({
+									method: "frappe.client.get",
+									args: {
+										doctype: "Cost Center",
+										name: values.cost_center,
+									},
+									async: false,
+									callback(cc_response) {
+										if (cc_response.message) {
+											branch_display =
+												cc_response.message.custom_cr_name ||
+												values.cost_center;
+										}
+									},
+								});
+							}
+
 							frappe.call({
-								method: "frappe.client.get",
-								args: {
-									doctype: "Cost Center",
-									name: values.cost_center,
-								},
-								async: false,
-								callback(cc_response) {
-									if (cc_response.message) {
-										branch_display =
-											cc_response.message.custom_cr_name || values.cost_center;
+								method: "beveren_health.beveren_health.utils.label_printing.get_label_data_for_batch",
+								args: { batch_name: frm.doc.name },
+								freeze: true,
+								freeze_message: __("Loading label data..."),
+								callback(r) {
+									if (!r.message || !r.message.barcode_image) {
+										frappe.msgprint(
+											__("Could not load label data for this batch.")
+										);
+										return;
 									}
+									const data = r.message;
+									const labels_html = [];
+									for (let i = 0; i < num; i++) {
+										labels_html.push(
+											'<div class="label-page">' +
+												build_batch_label_html(data, branch_display) +
+												"</div>"
+										);
+									}
+
+									const w = window.open("", "_blank");
+									w.document.write(
+										"<html><head><style>" +
+											BATCH_LABEL_CSS +
+											"</style></head><body>" +
+											labels_html.join("") +
+											"<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}};</script></body></html>"
+									);
+									w.document.close();
 								},
 							});
-						}
+						},
+					});
 
-						frappe.call({
-							method: "beveren_health.beveren_health.utils.label_printing.get_label_data_for_batch",
-							args: { batch_name: frm.doc.name },
-							freeze: true,
-							freeze_message: __("Loading label data..."),
-							callback(r) {
-								if (!r.message || !r.message.barcode_image) {
-									frappe.msgprint(__("Could not load label data for this batch."));
-									return;
-								}
-								const data = r.message;
-								const labels_html = [];
-								for (let i = 0; i < num; i++) {
-									labels_html.push(
-										'<div class="label-page">' +
-											build_batch_label_html(data, branch_display) +
-											"</div>"
-									);
-								}
-
-								const w = window.open("", "_blank");
-								w.document.write(
-									"<html><head><style>" +
-										BATCH_LABEL_CSS +
-										"</style></head><body>" +
-										labels_html.join("") +
-										'<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}};<\/script></body></html>'
-								);
-								w.document.close();
-							},
-						});
-					},
-				});
-
-				d.show();
-			}, __("Actions"));
+					d.show();
+				},
+				__("Actions")
+			);
 		}
 	},
 });

@@ -26,6 +26,9 @@
 	"root": true,
 	"globals": {
 		"frappe": true,
+		"beveren_health": true,
+		"erpnext": true,
+		"custom": true,
 		"Vue": true,
 		"SetVueGlobals": true,
 		"__": true,

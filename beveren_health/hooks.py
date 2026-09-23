@@ -47,35 +47,35 @@ app_include_js = [
 # page_js = {"page" : "public/js/file.js"}
 
 # include js in doctype views
-doctype_list_js = {"Shift Type" : "public/js/shift_type_list.js"}
+doctype_list_js = {"Shift Type": "public/js/shift_type_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
 doctype_js = {
-    "Appraisal": "public/js/appraisal.js",
-    # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
-    "Purchase Receipt":"public/js/purchase_receipt.js",
-    "Purchase Order": "public/js/purchase_order.js",
-    "Purchase Invoice": "public/js/purchase_invoice.js",
-    "Employee" : "beveren_health/public/js/employee.js",
-    # "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
-    "Stock Settings" : "/public/js/stock_settings.js",
-    "Item" : "/public/js/item.js",
-    "Batch" : "public/js/batch.js",
-    "Item Group": "public/js/item_group.js",
-    "Overtime Slip" : "public/js/overtime_slip.js",
-    "Salary Slip" : "public/js/salary_slip.js",
-    "Holiday List" : "public/js/holiday_list.js",
-    "Shift Type" : "public/js/shift_type.js",
-    "Shift Assignment" : "public/js/shift_assignment.js",
-    "Employee Checkin" : "public/js/employee_checkin.js",
-    "Cost Center" : "public/js/cost_center.js",
-    "Stock Reconciliation": "public/js/stock_reconciliation.js",
-    "Stock Scanner": "public/js/stock_scanner.js",
-    "Stock Entry": "public/js/stock_entry.js",
-    "Sales Invoice": "public/js/sales_invoice.js",
-    "Full and Final Statement": "public/js/full_and_final_statement.js",
-    "Timesheet": "public/js/timesheet.js",
+	"Appraisal": "public/js/appraisal.js",
+	# "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+	"Purchase Receipt": "public/js/purchase_receipt.js",
+	"Purchase Order": "public/js/purchase_order.js",
+	"Purchase Invoice": "public/js/purchase_invoice.js",
+	"Employee": "beveren_health/public/js/employee.js",
+	# "Purchase Receipt" : "beveren_health/public/js/purchase_receipt_item.js",
+	"Stock Settings": "/public/js/stock_settings.js",
+	"Item": "/public/js/item.js",
+	"Batch": "public/js/batch.js",
+	"Item Group": "public/js/item_group.js",
+	"Overtime Slip": "public/js/overtime_slip.js",
+	"Salary Slip": "public/js/salary_slip.js",
+	"Holiday List": "public/js/holiday_list.js",
+	"Shift Type": "public/js/shift_type.js",
+	"Shift Assignment": "public/js/shift_assignment.js",
+	"Employee Checkin": "public/js/employee_checkin.js",
+	"Cost Center": "public/js/cost_center.js",
+	"Stock Reconciliation": "public/js/stock_reconciliation.js",
+	"Stock Scanner": "public/js/stock_scanner.js",
+	"Stock Entry": "public/js/stock_entry.js",
+	"Sales Invoice": "public/js/sales_invoice.js",
+	"Full and Final Statement": "public/js/full_and_final_statement.js",
+	"Timesheet": "public/js/timesheet.js",
 }
 
 # Svg Icons
@@ -120,17 +120,17 @@ app_include_icons = "/assets/beveren_health/icons.svg"
 # after_install = "beveren_health.beveren_health.utils.print_format_setup.create_medication_label_print_format"
 
 after_migrate = [
-    "beveren_health.beveren_health.override.hr_workspace.add_hr_workspace_links",
-    "beveren_health.scripts.create_fnf_from_xlsx.run",
-    # "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
-    "beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
-    "beveren_health.vat_setup.ensure_nbr_vat_fields",
+	"beveren_health.beveren_health.override.hr_workspace.add_hr_workspace_links",
+	"beveren_health.scripts.create_fnf_from_xlsx.run",
+	# "beveren_health.beveren_health.override.desk_sidebar.create_restricted_roles",
+	"beveren_health.beveren_health.override.desk_sidebar.set_klik_pos_workspace_icon",
+	"beveren_health.vat_setup.ensure_nbr_vat_fields",
 ]
 
 # Boot
 # ----
 # Prune the desk grid to the Healthcare app only for clinical/healthcare staff.
-#Commented by Mania
+# Commented by Mania
 # extend_bootinfo = [
 #     "beveren_health.beveren_health.override.desk_sidebar.restrict_healthcare_sidebar"
 # ]
@@ -188,116 +188,103 @@ after_migrate = [
 # }
 
 doc_events = {
-    "Employee" : {
-        "before_save" : "beveren_health.beveren_health.customize.employee.before_save"
-    },
-    "Salary Structure": {
-        "before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
-    },
-    "Sales Invoice": {
-        "validate": [
-            "beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
-            # ACC-181 OP / IP price list by admission status
-            "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient",
-        ],
-        "before_submit": [
-            "beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
-            "beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
-        ],
-        "on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
-        "on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
-    },
-    "Delivery Note": {
-        # Hospital POS creates DN from Sales Order; lots must be consumed here (not only on SI).
-        "before_submit": [
-            "beveren_health.beveren_health.customize.dispensing_lot.validate_delivery_note_dispensing_lots",
-            "beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
-        ],
-        "on_submit": "beveren_health.beveren_health.customize.dispensing_lot.process_delivery_note_dispensing_lots",
-        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_delivery_note_dispensing_lots",
-    },
-    "Full and Final Statement" : {
-        "before_save" : "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
-    },
-    "Attendance" : {
-        "before_insert" : "beveren_health.beveren_health.customize.attendance.before_insert"
-    },
-     "Item" : {
-        "on_update" : "beveren_health.beveren_health.customize.item.on_update"
-    },
-    "Shift Type": {
-        "before_save": "beveren_health.beveren_health.customize.shift_type.before_save"
-    },
-    "Batch": {
-        "before_save": "beveren_health.beveren_health.override.batch.before_save",
-        "on_update":"beveren_health.beveren_health.utils.batch.batch_before_save",
-        # "validate": "beveren_health.beveren_health.override.batch.validate_batch"
-    },
-    
-    "Serial No": {
-        "before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"
-    },
-    # --- Serene BRD ---------------------------------------------------------
-    # HR-154 / HR-155 / HR-156 patient-visit allowances
-    "Overtime Slip": {
-        "validate": "beveren_health.beveren_health.customize.overtime_allowance.validate"
-    },
-    # HR-107 HR policy document sharing
-    "HR Policy Document": {
-        "on_update": "beveren_health.beveren_health.customize.hr_policy.distribute_policy"
-    },
-    # ACC-181 OP / IP price list by admission status
-    "Sales Order": {
-        "validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
-    },
-    "Quotation": {
-        "validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
-    },
-    "Purchase Order": {
-        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-    },
-    "Purchase Invoice": {
-        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-    },
-    "Purchase Receipt": {
-        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
-        "on_submit": [
-            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
-            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
-        ],
-        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
-    },
-    "Stock Reconciliation": {
-        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
-        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
-        "on_submit": [
-            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
-            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
-            "beveren_health.beveren_health.customize.stock_scanner.mark_stock_scanners_on_reconciliation_submit",
-        ],
-        "on_cancel": [
-            "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
-            "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
-        ],
-        "on_trash": "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
-    },
-    "Stock Entry": {
-        "validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_stock_entry_warehouse",
-        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
-        "on_submit": [
-            "beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
-            "beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
-        ],
-        "on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
-    },
-    "Stock Scanner": {
-        "before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_scanner_dispensing_lots",
-    },
-    # Header Patient (custom_patient) fills the patient on every time log row.
-    "Timesheet": {
-        "validate": "beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
-    },
+	"Employee": {"before_save": "beveren_health.beveren_health.customize.employee.before_save"},
+	"Salary Structure": {
+		"before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
+	},
+	"Sales Invoice": {
+		"validate": [
+			"beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
+			# ACC-181 OP / IP price list by admission status
+			"beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient",
+		],
+		"before_submit": [
+			"beveren_health.beveren_health.customize.sales_invoice.validate_dispensing_lots",
+			"beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
+		],
+		"on_submit": "beveren_health.beveren_health.customize.sales_invoice.update_dispensing_lots_on_submit",
+		"on_cancel": "beveren_health.beveren_health.customize.sales_invoice.restore_dispensing_lots_on_cancel",
+	},
+	"Delivery Note": {
+		# Hospital POS creates DN from Sales Order; lots must be consumed here (not only on SI).
+		"before_submit": [
+			"beveren_health.beveren_health.customize.dispensing_lot.validate_delivery_note_dispensing_lots",
+			"beveren_health.beveren_health.customize.dispensing_lot.fill_return_lots_on_submit",
+		],
+		"on_submit": "beveren_health.beveren_health.customize.dispensing_lot.process_delivery_note_dispensing_lots",
+		"on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_delivery_note_dispensing_lots",
+	},
+	"Full and Final Statement": {
+		"before_save": "beveren_health.beveren_health.customize.full_and_final_settlement.before_save"
+	},
+	"Attendance": {"before_insert": "beveren_health.beveren_health.customize.attendance.before_insert"},
+	"Item": {"on_update": "beveren_health.beveren_health.customize.item.on_update"},
+	"Shift Type": {"before_save": "beveren_health.beveren_health.customize.shift_type.before_save"},
+	"Batch": {
+		"before_save": "beveren_health.beveren_health.override.batch.before_save",
+		"on_update": "beveren_health.beveren_health.utils.batch.batch_before_save",
+		# "validate": "beveren_health.beveren_health.override.batch.validate_batch"
+	},
+	"Serial No": {"before_insert": "beveren_health.beveren_health.customize.serial_no.set_gtin_universal"},
+	# --- Serene BRD ---------------------------------------------------------
+	# HR-154 / HR-155 / HR-156 patient-visit allowances
+	"Overtime Slip": {"validate": "beveren_health.beveren_health.customize.overtime_allowance.validate"},
+	# HR-107 HR policy document sharing
+	"HR Policy Document": {
+		"on_update": "beveren_health.beveren_health.customize.hr_policy.distribute_policy"
+	},
+	# ACC-181 OP / IP price list by admission status
+	"Sales Order": {
+		"validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
+	},
+	"Quotation": {
+		"validate": "beveren_health.beveren_health.customize.patient_pricing.set_price_list_for_patient"
+	},
+	"Purchase Order": {
+		"validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+	},
+	"Purchase Invoice": {
+		"validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+	},
+	"Purchase Receipt": {
+		"validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+		"before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+		"on_submit": [
+			"beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+			"beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+		],
+		"on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+	},
+	"Stock Reconciliation": {
+		"validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_set_warehouse",
+		"before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_document_dispensing_lots",
+		"on_submit": [
+			"beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+			"beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+			"beveren_health.beveren_health.customize.stock_scanner.mark_stock_scanners_on_reconciliation_submit",
+		],
+		"on_cancel": [
+			"beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+			"beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
+		],
+		"on_trash": "beveren_health.beveren_health.customize.stock_scanner.release_stock_scanners_from_reconciliation",
+	},
+	"Stock Entry": {
+		"validate": "beveren_health.beveren_health.customize.warehouse_cost_center.set_cost_center_from_stock_entry_warehouse",
+		"before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_entry_dispensing_lots",
+		"on_submit": [
+			"beveren_health.beveren_health.customize.serial_no.update_serial_gtin",
+			"beveren_health.beveren_health.customize.dispensing_lot.create_dispensing_lots_on_submit",
+		],
+		"on_cancel": "beveren_health.beveren_health.customize.dispensing_lot.reverse_stock_document_dispensing_lots",
+	},
+	"Stock Scanner": {
+		"before_submit": "beveren_health.beveren_health.customize.dispensing_lot.validate_stock_scanner_dispensing_lots",
+	},
+	# Header Patient (custom_patient) fills the patient on every time log row.
+	"Timesheet": {
+		"validate": "beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
+	},
 }
 
 
@@ -323,18 +310,16 @@ doc_events = {
 # }
 
 scheduler_events = {
-    "daily": [
-        "beveren_health.beveren_health.utils.expiry_movement.move_expired_batches_to_expiry_warehouse",
-        # Employee document expiry reminder: from 90 days before the expiry date,
-        # repeating every 10 days, sent to the HR Manager role.
-        "beveren_health.beveren_health.notifications.employee_notification.notify_expiring_employee_documents",
-    ],
-    "weekly": [
-        "beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
-    ],
-    "hourly_long": [
-        "beveren_health.beveren_health.utils.attendance.update_last_sync_for_all_shifts"
-    ]
+	"daily": [
+		"beveren_health.beveren_health.utils.expiry_movement.move_expired_batches_to_expiry_warehouse",
+		# Employee document expiry reminder: from 90 days before the expiry date,
+		# repeating every 10 days, sent to the HR Manager role.
+		"beveren_health.beveren_health.notifications.employee_notification.notify_expiring_employee_documents",
+	],
+	"weekly": [
+		"beveren_health.beveren_health.notifications.employee_notification.notify_ending_probation_period"
+	],
+	"hourly_long": ["beveren_health.beveren_health.utils.attendance.update_last_sync_for_all_shifts"],
 }
 
 
@@ -352,9 +337,8 @@ extend_doctype_class = {
 	"Appraisal": "beveren_health.beveren_health.customize.appraisal.Appraisal",
 	"Employee Performance Feedback": "beveren_health.beveren_health.customize.employee_performance_feedback.EmployeePerformanceFeedback",
 	"Full and Final Statement": "beveren_health.beveren_health.customize.full_and_final_statement_class.FullandFinalStatement",
-	"Batch": "beveren_health.beveren_health.override.batch.CustomBatch"
+	"Batch": "beveren_health.beveren_health.override.batch.CustomBatch",
 }
-
 
 
 # Overriding Methods
@@ -434,81 +418,89 @@ extend_doctype_class = {
 # ignore_translatable_strings_from = []
 
 fixtures = [
-    {"doctype" : "TNA Template"},
-    {
-        # Employee IDs use the EMP-.###. series only (default, single option, field hidden)
-        "doctype": "Property Setter",
-        "filters": [
-            ["doc_type", "=", "Employee"],
-            ["field_name", "=", "naming_series"],
-        ]
-    },
-    {
-        # Appraisal / feedback grids: bulk edit + dynamic row height. These were
-        # edited directly in the hrms app's DocType JSON, which loses them on any
-        # hrms upgrade; carried here as Property Setters instead.
-        "doctype": "Property Setter",
-        "filters": [
-            ["doc_type", "in", [
-                "Appraisal Goal",
-                "Appraisal Template Goal",
-                "Employee Feedback Rating",
-            ]],
-            ["property", "in", ["allow_bulk_edit", "row_format"]],
-        ]
-    },
-    {
-        "doctype": "Custom Field",
-        "filters": [
-            ["name", "in", [
-                "Purchase Receipt Item-custom_label_print",
-                "Purchase Receipt Item-custom_label_printing",
-                "Item Barcode-custom_image",
-                "Purchase Receipt Item-custom_expiry_date",
-                "Purchase Receipt Item-custom_manufacturing_date",
-                "Cost Center-custom_cr_no",
-                "Warehouse-custom_cr_no",
-                "Cost Center-custom_address",
-                "Cost Center-custom_letter_head",
-                "Cost Center-custom_address_display",
-                "Cost Center-custom_address_html",
-                "Stock Entry-custom_custom_scanner",
-                "Stock Reconciliation-custom_custom_scanner",
-                "Item Barcode-custom_batch",
-                "Purchase Receipt Item-custom_scanner",
-                "Batch-custom_original_batch_id",
-                "Stock Entry Detail-custom_expiry_date",
-                "Stock Entry Detail-custom_manufacturing_date",
-                "Stock Reconciliation Item-custom_expiry_date",
-                "Stock Reconciliation Item-custom_manufacturing_date",
-                "Stock Reconciliation Item-custom_scanner",
-                "Stock Entry Detail-custom_scanner",
-                "Stock Entry Detail-custom_column_break_ikwni",
-                "Stock Reconciliation Item-custom_gstin",
-                "Stock Entry Detail-custom_gstin",
-                "Purchase Receipt Item-custom_gstin",
-                "Serial No-custom_gtin",
-                "Sales Invoice Item-custom_dispensing_lot",
-                "Item-custom_has_dispense_lot",
-                "Sales Invoice Item-custom_section_break_k4p2l",
-                "Purchase Receipt Item-custom_dispensing_lot",
-                "Purchase Receipt Item-custom_section_break_qpm82",
-                "Stock Entry Detail-custom_dispensing_lot",
-                "Stock Entry Detail-custom_section_break_81xt5",
-                "Stock Reconciliation Item-custom_dispensing_lot",
-                "Stock Reconciliation Item-custom_section_break_vv0xo",
-                "Delivery Note Item-custom_section_break_o7y1z",
-                "Delivery Note Item-custom_dispensing_lot",
-                "Warehouse-custom_cost_center",
-                "Purchase Receipt-custom_auto_save_scan_interval",
-                "Stock Entry-custom_auto_save_scan_interval",
-                "Stock Reconciliation-custom_auto_save_scan_interval",
-                "Timesheet-custom_patient_name",
-                "Timesheet-custom_patient",
-                "Timesheet Detail-custom_patient_name",
-                "Timesheet Detail-custom_patient",
-                "Timesheet Detail-custom_duration"
-            ]]
-        ]
-    }
+	{"doctype": "TNA Template"},
+	{
+		# Employee IDs use the EMP-.###. series only (default, single option, field hidden)
+		"doctype": "Property Setter",
+		"filters": [
+			["doc_type", "=", "Employee"],
+			["field_name", "=", "naming_series"],
+		],
+	},
+	{
+		# Appraisal / feedback grids: bulk edit + dynamic row height. These were
+		# edited directly in the hrms app's DocType JSON, which loses them on any
+		# hrms upgrade; carried here as Property Setters instead.
+		"doctype": "Property Setter",
+		"filters": [
+			[
+				"doc_type",
+				"in",
+				[
+					"Appraisal Goal",
+					"Appraisal Template Goal",
+					"Employee Feedback Rating",
+				],
+			],
+			["property", "in", ["allow_bulk_edit", "row_format"]],
+		],
+	},
+	{
+		"doctype": "Custom Field",
+		"filters": [
+			[
+				"name",
+				"in",
+				[
+					"Purchase Receipt Item-custom_label_print",
+					"Purchase Receipt Item-custom_label_printing",
+					"Item Barcode-custom_image",
+					"Purchase Receipt Item-custom_expiry_date",
+					"Purchase Receipt Item-custom_manufacturing_date",
+					"Cost Center-custom_cr_no",
+					"Warehouse-custom_cr_no",
+					"Cost Center-custom_address",
+					"Cost Center-custom_letter_head",
+					"Cost Center-custom_address_display",
+					"Cost Center-custom_address_html",
+					"Stock Entry-custom_custom_scanner",
+					"Stock Reconciliation-custom_custom_scanner",
+					"Item Barcode-custom_batch",
+					"Purchase Receipt Item-custom_scanner",
+					"Batch-custom_original_batch_id",
+					"Stock Entry Detail-custom_expiry_date",
+					"Stock Entry Detail-custom_manufacturing_date",
+					"Stock Reconciliation Item-custom_expiry_date",
+					"Stock Reconciliation Item-custom_manufacturing_date",
+					"Stock Reconciliation Item-custom_scanner",
+					"Stock Entry Detail-custom_scanner",
+					"Stock Entry Detail-custom_column_break_ikwni",
+					"Stock Reconciliation Item-custom_gstin",
+					"Stock Entry Detail-custom_gstin",
+					"Purchase Receipt Item-custom_gstin",
+					"Serial No-custom_gtin",
+					"Sales Invoice Item-custom_dispensing_lot",
+					"Item-custom_has_dispense_lot",
+					"Sales Invoice Item-custom_section_break_k4p2l",
+					"Purchase Receipt Item-custom_dispensing_lot",
+					"Purchase Receipt Item-custom_section_break_qpm82",
+					"Stock Entry Detail-custom_dispensing_lot",
+					"Stock Entry Detail-custom_section_break_81xt5",
+					"Stock Reconciliation Item-custom_dispensing_lot",
+					"Stock Reconciliation Item-custom_section_break_vv0xo",
+					"Delivery Note Item-custom_section_break_o7y1z",
+					"Delivery Note Item-custom_dispensing_lot",
+					"Warehouse-custom_cost_center",
+					"Purchase Receipt-custom_auto_save_scan_interval",
+					"Stock Entry-custom_auto_save_scan_interval",
+					"Stock Reconciliation-custom_auto_save_scan_interval",
+					"Timesheet-custom_patient_name",
+					"Timesheet-custom_patient",
+					"Timesheet Detail-custom_patient_name",
+					"Timesheet Detail-custom_patient",
+					"Timesheet Detail-custom_duration",
+				],
+			]
+		],
+	},
 ]

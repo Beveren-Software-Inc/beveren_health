@@ -60,8 +60,8 @@ def execute(filters: dict | None = None):
 		},
 	)
 
-	message = _(
-		"Prepared from submitted invoices for {0} to {1}. Review before filing with the NBR."
-	).format(from_date, to_date)
+	message = _("Prepared from submitted invoices for {0} to {1}. Review before filing with the NBR.").format(
+		from_date, to_date
+	)
 
 	return get_columns(), data, message

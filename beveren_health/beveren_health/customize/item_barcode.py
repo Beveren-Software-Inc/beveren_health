@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+
 from beveren_health.beveren_health.utils.barcode import (
 	DEFAULT_BARCODE_TYPE,
 	generate_barcode_image,
@@ -49,7 +50,7 @@ def generate_barcode_for_item(item_code):
 		except Exception as e:
 			frappe.log_error(
 				title="Barcode Image Generation Error",
-				message=f"Error generating barcode image (item {item_code}): {str(e)}",
+				message=f"Error generating barcode image (item {item_code}): {e!s}",
 			)
 			frappe.throw(str(e))
 
@@ -68,6 +69,6 @@ def generate_barcode_for_item(item_code):
 	except Exception as e:
 		frappe.log_error(
 			title="Barcode Image Generation Error",
-			message=f"Error generating barcode image (item {item_code}): {str(e)}",
+			message=f"Error generating barcode image (item {item_code}): {e!s}",
 		)
 		frappe.throw(str(e))

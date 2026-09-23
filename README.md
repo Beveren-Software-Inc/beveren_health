@@ -34,17 +34,30 @@ cd apps/beveren_health
 pre-commit install
 ```
 
+A commit that reformats whole files (for example the first `pre-commit run
+--all-files`) makes Semgrep report the pre-existing findings of those files as
+new, because its baseline matches changed lines. Such a one-off commit can skip
+the Semgrep hook locally and in CI:
+
+```bash
+SKIP=semgrep git commit -m "chore: apply pre-commit formatting [skip semgrep]"
+```
+
 Pre-commit is configured to use the following tools for checking and formatting your code:
 
 - ruff
 - eslint
 - prettier
 - pyupgrade
+- [Frappe Semgrep rules](https://github.com/frappe/semgrep-rules) (only findings
+  introduced by the change are reported, see `scripts/run_semgrep.sh`)
 ### CI
 
 This app can use GitHub Actions for CI. The following workflows are configured:
 
-- CI: Installs this app and runs unit tests on every push to `develop` branch.
+- CI: Installs this app and runs unit tests on the `develop` branch and pull
+  requests. The `linters` job runs the Frappe Semgrep rules (new findings only)
+  on every push and pull request.
 - Linters: Runs [Frappe Semgrep Rules](https://github.com/frappe/semgrep-rules) and [pip-audit](https://pypi.org/project/pip-audit/) on every pull request.
 
 

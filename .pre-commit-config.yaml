@@ -63,6 +63,20 @@ repos:
                 beveren_health/public/js/lib/.*
             )$
 
+  # Frappe Semgrep rules (https://github.com/frappe/semgrep-rules).
+  # Runs on every commit; only findings that are new compared to HEAD fail the
+  # commit, pre-existing findings are reported by CI instead.
+  - repo: local
+    hooks:
+      - id: semgrep
+        name: "Frappe Semgrep rules"
+        entry: bash scripts/run_semgrep.sh
+        language: python
+        additional_dependencies: ["semgrep"]
+        always_run: true
+        pass_filenames: false
+        require_serial: true
+
 ci:
     autoupdate_schedule: weekly
     skip: []
