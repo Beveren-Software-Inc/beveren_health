@@ -1,6 +1,8 @@
+import json
+
 import frappe
 from frappe.utils import flt, today
-import json
+
 
 @frappe.whitelist()
 def get_vat_return_summary(company, from_date, to_date, tax_id=None):
@@ -12,21 +14,56 @@ def get_vat_return_summary(company, from_date, to_date, tax_id=None):
 	rows = {
 		"1a": {"desc": "Standard Rated Sales at 10%", "amount": 0.0, "vat": 0.0, "count": 0},
 		"1b": {"desc": "Standard Rated Sales at 5%", "amount": 0.0, "vat": 0.0, "count": 0},
-		"2": {"desc": "Sales to Registered VAT Payers in Other GCC States", "amount": 0.0, "vat": 0.0, "count": 0},
-		"3": {"desc": "Sales Subject to Domestic Reverse Charge Mechanism", "amount": 0.0, "vat": 0.0, "count": 0},
+		"2": {
+			"desc": "Sales to Registered VAT Payers in Other GCC States",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
+		"3": {
+			"desc": "Sales Subject to Domestic Reverse Charge Mechanism",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
 		"4": {"desc": "Zero-Rated Domestic Sales", "amount": 0.0, "vat": 0.0, "count": 0},
 		"5": {"desc": "Exports", "amount": 0.0, "vat": 0.0, "count": 0},
 		"6": {"desc": "Exempt Sales", "amount": 0.0, "vat": 0.0, "count": 0},
 		"7": {"desc": "Total Sales", "amount": 0.0, "vat": 0.0, "count": 0},
 		"8a": {"desc": "Standard Rated Domestic Purchases at 10%", "amount": 0.0, "vat": 0.0, "count": 0},
 		"8b": {"desc": "Standard Rated Domestic Purchases at 5%", "amount": 0.0, "vat": 0.0, "count": 0},
-		"9a": {"desc": "Imports Subject to VAT Paid at Customs at 10%", "amount": 0.0, "vat": 0.0, "count": 0},
+		"9a": {
+			"desc": "Imports Subject to VAT Paid at Customs at 10%",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
 		"9b": {"desc": "Imports Subject to VAT Paid at Customs at 5%", "amount": 0.0, "vat": 0.0, "count": 0},
 		"10": {"desc": "Imports Subject to Deferral at Customs", "amount": 0.0, "vat": 0.0, "count": 0},
-		"11a": {"desc": "Imports Subject to VAT Accounted for Through Reverse Charge Mechanism at 10%", "amount": 0.0, "vat": 0.0, "count": 0},
-		"11b": {"desc": "Imports Subject to VAT Accounted for Through Reverse Charge Mechanism at 5%", "amount": 0.0, "vat": 0.0, "count": 0},
-		"12": {"desc": "Purchases Subject to Domestic Reverse Charge Mechanism", "amount": 0.0, "vat": 0.0, "count": 0},
-		"13": {"desc": "Purchases from Non-Registered Suppliers, Zero-Rated/Exempt Purchases", "amount": 0.0, "vat": 0.0, "count": 0},
+		"11a": {
+			"desc": "Imports Subject to VAT Accounted for Through Reverse Charge Mechanism at 10%",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
+		"11b": {
+			"desc": "Imports Subject to VAT Accounted for Through Reverse Charge Mechanism at 5%",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
+		"12": {
+			"desc": "Purchases Subject to Domestic Reverse Charge Mechanism",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
+		"13": {
+			"desc": "Purchases from Non-Registered Suppliers, Zero-Rated/Exempt Purchases",
+			"amount": 0.0,
+			"vat": 0.0,
+			"count": 0,
+		},
 		"14": {"desc": "Total Purchases", "amount": 0.0, "vat": 0.0, "count": 0},
 	}
 
@@ -48,12 +85,12 @@ def get_vat_return_summary(company, from_date, to_date, tax_id=None):
 			rows[row_id]["amount"] += flt(item.base_net_amount)
 			rows[row_id]["vat"] += flt(item.vat_amount)
 			row_docs[row_id].add(item.parent)
-			
+
 			# If this is an RCM purchase, we also report the liability (Output VAT) on the Sales side!
 			if item.get("custom_reverse_charge_applicable"):
 				vat_cat = item.custom_bahrain_vat_category
 				sales_row_id = "1b" if vat_cat == "Standard 5%" else "1a"
-				
+
 				rows[sales_row_id]["amount"] += flt(item.base_net_amount)
 				rows[sales_row_id]["vat"] += flt(item.vat_amount)
 				row_docs[sales_row_id].add(item.parent)
@@ -67,7 +104,7 @@ def get_vat_return_summary(company, from_date, to_date, tax_id=None):
 	sales_rows = ["1a", "1b", "2", "3", "4", "5", "6"]
 	rows["7"]["amount"] = sum(rows[r]["amount"] for r in sales_rows)
 	rows["7"]["vat"] = sum(rows[r]["vat"] for r in sales_rows)
-	
+
 	total_sales_docs = set()
 	for r in sales_rows:
 		total_sales_docs.update(row_docs[r])
@@ -77,7 +114,7 @@ def get_vat_return_summary(company, from_date, to_date, tax_id=None):
 	purchase_rows = ["8a", "8b", "9a", "9b", "10", "11a", "11b", "12", "13"]
 	rows["14"]["amount"] = sum(rows[r]["amount"] for r in purchase_rows)
 	rows["14"]["vat"] = sum(rows[r]["vat"] for r in purchase_rows)
-	
+
 	total_purch_docs = set()
 	for r in purchase_rows:
 		total_purch_docs.update(row_docs[r])
@@ -93,9 +130,12 @@ def get_vat_return_summary(company, from_date, to_date, tax_id=None):
 		"row_16_correction_amount": 0.0,
 		"row_17_credit_carried_forward": 0.0,
 		"row_18_vat": row_18_vat,
-		"unclassified_count": len(get_unclassified_sales_items(sales_items) + get_unclassified_purchase_items(purchase_items))
+		"unclassified_count": len(
+			get_unclassified_sales_items(sales_items) + get_unclassified_purchase_items(purchase_items)
+		),
 	}
 	return summary
+
 
 @frappe.whitelist()
 def get_category_breakup(row_id, company, from_date, to_date, tax_id=None):
@@ -142,12 +182,8 @@ def get_category_breakup(row_id, company, from_date, to_date, tax_id=None):
 					b2c_amount += flt(item.base_net_amount)
 					b2c_vat += flt(item.vat_amount)
 
-	return {
-		"b2b_amount": b2b_amount,
-		"b2b_vat": b2b_vat,
-		"b2c_amount": b2c_amount,
-		"b2c_vat": b2c_vat
-	}
+	return {"b2b_amount": b2b_amount, "b2b_vat": b2b_vat, "b2c_amount": b2c_amount, "b2c_vat": b2c_vat}
+
 
 @frappe.whitelist()
 def get_invoice_list(row_id, category, company, from_date, to_date, tax_id=None):
@@ -171,7 +207,7 @@ def get_invoice_list(row_id, category, company, from_date, to_date, tax_id=None)
 							"date": item.posting_date,
 							"taxable_value": 0.0,
 							"vat_amount": 0.0,
-							"doctype": "Sales Invoice"
+							"doctype": "Sales Invoice",
 						}
 					invoices[key]["taxable_value"] += flt(item.base_net_amount)
 					invoices[key]["vat_amount"] += flt(item.vat_amount)
@@ -193,7 +229,7 @@ def get_invoice_list(row_id, category, company, from_date, to_date, tax_id=None)
 									"date": item.posting_date,
 									"taxable_value": 0.0,
 									"vat_amount": 0.0,
-									"doctype": "Purchase Invoice"
+									"doctype": "Purchase Invoice",
 								}
 							invoices[key]["taxable_value"] += flt(item.base_net_amount)
 							invoices[key]["vat_amount"] += flt(item.vat_amount)
@@ -211,54 +247,65 @@ def get_invoice_list(row_id, category, company, from_date, to_date, tax_id=None)
 							"date": item.posting_date,
 							"taxable_value": 0.0,
 							"vat_amount": 0.0,
-							"doctype": "Purchase Invoice"
+							"doctype": "Purchase Invoice",
 						}
 					invoices[key]["taxable_value"] += flt(item.base_net_amount)
 					invoices[key]["vat_amount"] += flt(item.vat_amount)
 
 	return list(invoices.values())
 
+
 @frappe.whitelist()
 def get_unclassified_items(company, from_date, to_date, tax_id=None):
 	sales_items = get_sales_items(company, from_date, to_date, tax_id)
 	purchase_items = get_purchase_items(company, from_date, to_date, tax_id)
-	
+
 	unclassified = []
 	for item in sales_items:
 		if not classify_sales_item(item):
-			unclassified.append({
-				"document": item.parent,
-				"item_code": item.item_code,
-				"reason": "Unmapped supply type or missing Item Tax Template categorization",
-				"doctype": "Sales Invoice"
-			})
+			unclassified.append(
+				{
+					"document": item.parent,
+					"item_code": item.item_code,
+					"reason": "Unmapped supply type or missing Item Tax Template categorization",
+					"doctype": "Sales Invoice",
+				}
+			)
 
 	for item in purchase_items:
 		if not classify_purchase_item(item):
-			unclassified.append({
-				"document": item.parent,
-				"item_code": item.item_code,
-				"reason": "Unclassified purchase transaction parameters",
-				"doctype": "Purchase Invoice"
-			})
+			unclassified.append(
+				{
+					"document": item.parent,
+					"item_code": item.item_code,
+					"reason": "Unclassified purchase transaction parameters",
+					"doctype": "Purchase Invoice",
+				}
+			)
 
 	# GCC warning check: GCC customers marked registered but missing TRN
-	gcc_warnings = frappe.db.sql("""
+	gcc_warnings = frappe.db.sql(
+		"""
 		SELECT name, customer_name, tax_id as vat_registration_number
 		FROM `tabCustomer`
 		WHERE tax_category = 'GCC Registered'
 		  AND (tax_id IS NULL OR tax_id = '')
-	""", as_dict=True)
+	""",
+		as_dict=True,
+	)
 
 	for w in gcc_warnings:
-		unclassified.append({
-			"document": w.name,
-			"item_code": "-",
-			"reason": f"GCC customer '{w.customer_name}' is marked GCC Registered but lacks a VAT No. (Tax ID)",
-			"doctype": "Customer"
-		})
+		unclassified.append(
+			{
+				"document": w.name,
+				"item_code": "-",
+				"reason": f"GCC customer '{w.customer_name}' is marked GCC Registered but lacks a VAT No. (Tax ID)",
+				"doctype": "Customer",
+			}
+		)
 
 	return unclassified
+
 
 def get_sales_items(company, from_date, to_date, tax_id=None):
 	vat_output = get_company_vat_accounts(company, "VAT Output")
@@ -279,24 +326,20 @@ def get_sales_items(company, from_date, to_date, tax_id=None):
 		LEFT JOIN `tabAddress` addr ON si.customer_address = addr.name
 		LEFT JOIN `tabItem Tax Template` itt ON sii.item_tax_template = itt.name
 		LEFT JOIN `tabItem Tax Template Detail` ittd ON ittd.parent = itt.name AND ittd.tax_type IN %(vat_output)s
-		
+
 		LEFT JOIN `tabAddress` comp_addr ON si.company_address = comp_addr.name
 		WHERE si.company = %(company)s
 		  AND si.posting_date BETWEEN %(from_date)s AND %(to_date)s
 		  AND si.docstatus = 1
 	"""
-	params = {
-		"company": company,
-		"from_date": from_date,
-		"to_date": to_date,
-		"vat_output": vat_output
-	}
+	params = {"company": company, "from_date": from_date, "to_date": to_date, "vat_output": vat_output}
 	if tax_id:
 		query += " AND (comp_addr.tax_id = %(tax_id)s OR (si.company_address IS NULL AND (SELECT tax_id FROM `tabCompany` WHERE name = si.company) = %(tax_id)s))"
 		params["tax_id"] = tax_id
 
 	query += " GROUP BY sii.name"
 	return frappe.db.sql(query, params, as_dict=True)
+
 
 def get_purchase_items(company, from_date, to_date, tax_id=None):
 	rcm_input = get_company_vat_accounts(company, "RCM Input")
@@ -305,11 +348,15 @@ def get_purchase_items(company, from_date, to_date, tax_id=None):
 	vat_output = get_company_vat_accounts(company, "VAT Output")
 
 	abbr = frappe.db.get_value("Company", company, "abbr") or "BS"
-	
-	if not rcm_input: rcm_input = [f"VAT Input RCM - {abbr}"]
-	if not rcm_output: rcm_output = [f"VAT Output RCM - {abbr}"]
-	if not vat_input: vat_input = [f"VAT Input - {abbr}"]
-	if not vat_output: vat_output = [f"VAT Output - {abbr}"]
+
+	if not rcm_input:
+		rcm_input = [f"VAT Input RCM - {abbr}"]
+	if not rcm_output:
+		rcm_output = [f"VAT Output RCM - {abbr}"]
+	if not vat_input:
+		vat_input = [f"VAT Input - {abbr}"]
+	if not vat_output:
+		vat_output = [f"VAT Output - {abbr}"]
 
 	query = """
 		SELECT
@@ -317,15 +364,15 @@ def get_purchase_items(company, from_date, to_date, tax_id=None):
 			pi.posting_date, pi.supplier, pi.supplier_name,
 			pi.custom_vat_category as vat_category, pi.custom_reverse_charge_applicable,
 			itt.custom_bahrain_vat_category,
-			SUM(CASE 
-				WHEN pi.custom_reverse_charge_applicable = 1 AND pt.account_head IN %(rcm_input)s THEN iwtd.amount 
-				WHEN pi.custom_reverse_charge_applicable = 0 AND pt.account_head IN %(vat_input)s THEN iwtd.amount 
-				ELSE 0 
+			SUM(CASE
+				WHEN pi.custom_reverse_charge_applicable = 1 AND pt.account_head IN %(rcm_input)s THEN iwtd.amount
+				WHEN pi.custom_reverse_charge_applicable = 0 AND pt.account_head IN %(vat_input)s THEN iwtd.amount
+				ELSE 0
 			END) as vat_amount,
-			SUM(CASE 
-				WHEN pi.custom_reverse_charge_applicable = 1 AND pt.account_head IN %(rcm_output)s THEN iwtd.amount 
-				WHEN pi.custom_reverse_charge_applicable = 0 AND pt.account_head IN %(vat_output)s THEN iwtd.amount 
-				ELSE 0 
+			SUM(CASE
+				WHEN pi.custom_reverse_charge_applicable = 1 AND pt.account_head IN %(rcm_output)s THEN iwtd.amount
+				WHEN pi.custom_reverse_charge_applicable = 0 AND pt.account_head IN %(vat_output)s THEN iwtd.amount
+				ELSE 0
 			END) as output_vat_amount,
 			addr.country
 		FROM `tabPurchase Invoice Item` pii
@@ -346,7 +393,7 @@ def get_purchase_items(company, from_date, to_date, tax_id=None):
 		"rcm_input": rcm_input,
 		"rcm_output": rcm_output,
 		"vat_input": vat_input,
-		"vat_output": vat_output
+		"vat_output": vat_output,
 	}
 	if tax_id:
 		query += " AND (comp_addr.tax_id = %(tax_id)s OR (pi.billing_address IS NULL AND (SELECT tax_id FROM `tabCompany` WHERE name = pi.company) = %(tax_id)s))"
@@ -354,6 +401,7 @@ def get_purchase_items(company, from_date, to_date, tax_id=None):
 
 	query += " GROUP BY pii.name"
 	return frappe.db.sql(query, params, as_dict=True)
+
 
 # Categorization Logic
 def classify_sales_item(item):
@@ -399,6 +447,7 @@ def classify_sales_item(item):
 
 	return None
 
+
 def classify_purchase_item(item):
 	# Derive supply type from country
 	country = item.get("country") or "Bahrain"
@@ -431,7 +480,10 @@ def classify_purchase_item(item):
 			return "13"
 
 	# Row 13: Purchases from non-registered / zero-rated / exempt
-	if item.vat_category in ["Unregistered (Domestic)", "GCC Unregistered"] or vat_cat in ["Zero-Rated", "Exempt"]:
+	if item.vat_category in ["Unregistered (Domestic)", "GCC Unregistered"] or vat_cat in [
+		"Zero-Rated",
+		"Exempt",
+	]:
 		return "13"
 
 	# Row 8(a) & 8(b): Standard rated domestic purchases
@@ -443,11 +495,14 @@ def classify_purchase_item(item):
 
 	return None
 
+
 def get_unclassified_sales_items(sales_items):
 	return [item for item in sales_items if not classify_sales_item(item)]
 
+
 def get_unclassified_purchase_items(purchase_items):
 	return [item for item in purchase_items if not classify_purchase_item(item)]
+
 
 @frappe.whitelist()
 def get_all_contributing_invoices(company, from_date, to_date, tax_id=None):
@@ -469,7 +524,7 @@ def get_all_contributing_invoices(company, from_date, to_date, tax_id=None):
 					"date": item.posting_date,
 					"taxable_value": 0.0,
 					"vat_amount": 0.0,
-					"box": row_id
+					"box": row_id,
 				}
 			invoices[key]["taxable_value"] += flt(item.base_net_amount)
 			invoices[key]["vat_amount"] += flt(item.vat_amount)
@@ -487,21 +542,23 @@ def get_all_contributing_invoices(company, from_date, to_date, tax_id=None):
 					"date": item.posting_date,
 					"taxable_value": 0.0,
 					"vat_amount": 0.0,
-					"box": row_id
+					"box": row_id,
 				}
 			invoices[key]["taxable_value"] += flt(item.base_net_amount)
 			invoices[key]["vat_amount"] += flt(item.vat_amount)
 
 	return sorted(list(invoices.values()), key=lambda x: x["date"])
 
+
 @frappe.whitelist()
 def download_vat_excel(company, from_date, to_date, tax_id=None):
 	summary = get_vat_return_summary(company, from_date, to_date, tax_id)
 	rows = summary["rows"]
 
-	import openpyxl
-	from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 	from io import BytesIO
+
+	import openpyxl
+	from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 	wb = openpyxl.Workbook()
 	ws = wb.active
@@ -527,7 +584,7 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 	# Headers (Row 4 and 5)
 	ws.merge_cells("A4:A5")
 	ws["A4"] = "Description"
-	
+
 	ws.merge_cells("B4:B5")
 	ws["B4"] = "Amount"
 
@@ -540,12 +597,12 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 	header_fill = PatternFill(start_color="E5E7EB", end_color="E5E7EB", fill_type="solid")
 	header_font = Font(name="Calibri", size=11, bold=True)
 	center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
-	
+
 	thin_border = Border(
-		left=Side(style='thin', color='B0B0B0'),
-		right=Side(style='thin', color='B0B0B0'),
-		top=Side(style='thin', color='B0B0B0'),
-		bottom=Side(style='thin', color='B0B0B0')
+		left=Side(style="thin", color="B0B0B0"),
+		right=Side(style="thin", color="B0B0B0"),
+		top=Side(style="thin", color="B0B0B0"),
+		bottom=Side(style="thin", color="B0B0B0"),
 	)
 
 	# Apply styling to header block
@@ -570,19 +627,35 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 		("Data", "5", "5. Exports", False, False),
 		("Data", "6", "6. Exempt sales", False, False),
 		("Total", "7", "7. Total sales", True, False),
-		
 		("Section", None, "VAT on Purchases", True, True),
 		("Data", "8a", "8(a). Standard rated domestic purchases at 10%", False, False),
 		("Data", "8b", "8(b). Standard rated domestic purchases at 5%", False, False),
 		("Data", "9a", "9(a). Imports subject to VAT paid at customs at 10%", False, False),
 		("Data", "9b", "9(b). Imports subject to VAT paid at customs at 5%", False, False),
 		("Data", "10", "10. Imports subject to deferral at customs", False, False),
-		("Data", "11a", "11(a). Imports subject to VAT accounted for through reverse charge mechanism at 10%", False, False),
-		("Data", "11b", "11(b). Imports subject to VAT accounted for through reverse charge mechanism at 5%", False, False),
+		(
+			"Data",
+			"11a",
+			"11(a). Imports subject to VAT accounted for through reverse charge mechanism at 10%",
+			False,
+			False,
+		),
+		(
+			"Data",
+			"11b",
+			"11(b). Imports subject to VAT accounted for through reverse charge mechanism at 5%",
+			False,
+			False,
+		),
 		("Data", "12", "12. Purchases subject to domestic reverse charge mechanism", False, False),
-		("Data", "13", "13. Purchases from non-registered suppliers, zero rated/exempt purchases", False, False),
+		(
+			"Data",
+			"13",
+			"13. Purchases from non-registered suppliers, zero rated/exempt purchases",
+			False,
+			False,
+		),
 		("Total", "14", "14. Total purchases", True, False),
-
 		("Section", None, "Net VAT Due", True, True),
 		("NetData", "15", "15. Total VAT due for current period", False, False),
 		("NetData", "16", "16. Corrections from previous period (between BHD \u00b15,000)", False, False),
@@ -595,24 +668,24 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 		if row_type == "Section":
 			ws.cell(row=current_row, column=1, value=label)
 			ws.merge_cells(start_row=current_row, start_column=1, end_row=current_row, end_column=4)
-			
+
 			section_fill = PatternFill(start_color="D1D5DB", end_color="D1D5DB", fill_type="solid")
 			section_font = Font(name="Calibri", size=11, bold=True)
-			
+
 			for c in range(1, 5):
 				cell = ws.cell(row=current_row, column=c)
 				cell.fill = section_fill
 				cell.font = section_font
 				cell.border = thin_border
 			ws.row_dimensions[current_row].height = 24
-			
+
 		elif row_type in ("Data", "Total"):
 			r_data = rows[key]
 			ws.cell(row=current_row, column=1, value=label)
 			ws.cell(row=current_row, column=2, value=flt(r_data.get("amount", 0.0)))
 			ws.cell(row=current_row, column=3, value=flt(r_data.get("adjustment", 0.0)))
 			ws.cell(row=current_row, column=4, value=flt(r_data.get("vat", 0.0)))
-			
+
 			cell_font = Font(name="Calibri", size=11, bold=is_bold)
 			ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="left", vertical="center")
 			ws.cell(row=current_row, column=1).font = cell_font
@@ -622,16 +695,16 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 				cell = ws.cell(row=current_row, column=c)
 				cell.font = cell_font
 				cell.border = thin_border
-				cell.number_format = '#,##0.000'
+				cell.number_format = "#,##0.000"
 				cell.alignment = Alignment(horizontal="right", vertical="center")
-			
+
 			ws.row_dimensions[current_row].height = 20
-			
+
 		elif row_type == "NetData":
 			ws.cell(row=current_row, column=1, value=label)
 			ws.cell(row=current_row, column=2, value="")
 			ws.cell(row=current_row, column=3, value="")
-			
+
 			val = 0.0
 			if key == "15":
 				val = flt(summary["row_15_vat"])
@@ -641,9 +714,9 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 				val = flt(summary["row_17_credit_carried_forward"])
 			elif key == "18":
 				val = flt(summary["row_18_vat"])
-			
+
 			ws.cell(row=current_row, column=4, value=val)
-			
+
 			cell_font = Font(name="Calibri", size=11, bold=is_bold)
 			ws.cell(row=current_row, column=1).alignment = Alignment(horizontal="left", vertical="center")
 			ws.cell(row=current_row, column=1).font = cell_font
@@ -654,7 +727,7 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 				cell.font = cell_font
 				cell.border = thin_border
 				if c == 4:
-					cell.number_format = '#,##0.000'
+					cell.number_format = "#,##0.000"
 					cell.alignment = Alignment(horizontal="right", vertical="center")
 				else:
 					cell.alignment = Alignment(horizontal="center", vertical="center")
@@ -663,59 +736,63 @@ def download_vat_excel(company, from_date, to_date, tax_id=None):
 				net_fill = PatternFill(start_color="EBF8FF", end_color="EBF8FF", fill_type="solid")
 				for c in range(1, 5):
 					ws.cell(row=current_row, column=c).fill = net_fill
-			
+
 			ws.row_dimensions[current_row].height = 20
 
 		current_row += 1
 
 	# Auto-adjust column widths
-	ws.column_dimensions['A'].width = 85
-	ws.column_dimensions['B'].width = 20
-	ws.column_dimensions['C'].width = 25
-	ws.column_dimensions['D'].width = 20
+	ws.column_dimensions["A"].width = 85
+	ws.column_dimensions["B"].width = 20
+	ws.column_dimensions["C"].width = 25
+	ws.column_dimensions["D"].width = 20
 
 	out_buf = BytesIO()
 	wb.save(out_buf)
 	out_buf.seek(0)
 
 	# Return xlsx download response
-	frappe.response['filename'] = f"Bahrain_VAT_Return_{company}_{from_date}_to_{to_date}.xlsx"
-	frappe.response['filecontent'] = out_buf.getvalue()
-	frappe.response['type'] = 'download'
+	frappe.response["filename"] = f"Bahrain_VAT_Return_{company}_{from_date}_to_{to_date}.xlsx"
+	frappe.response["filecontent"] = out_buf.getvalue()
+	frappe.response["type"] = "download"
+
 
 @frappe.whitelist()
 def get_company_vat_number(company):
 	# 1. Search for Address linked to the Company
 	addr_name = frappe.db.get_value(
-		"Dynamic Link",
-		{"parenttype": "Address", "link_doctype": "Company", "link_name": company},
-		"parent"
+		"Dynamic Link", {"parenttype": "Address", "link_doctype": "Company", "link_name": company}, "parent"
 	)
 	if addr_name:
 		tax_id = frappe.db.get_value("Address", addr_name, "tax_id")
 		if tax_id:
 			return tax_id
-			
+
 	# 2. Fallback to Company's tax_id field
 	return frappe.db.get_value("Company", company, "tax_id") or ""
+
 
 @frappe.whitelist()
 def get_company_vat_numbers(company):
 	# Get all unique tax_ids from Address linked to this Company
-	addresses = frappe.db.sql("""
+	addresses = frappe.db.sql(
+		"""
 		SELECT DISTINCT addr.tax_id FROM `tabAddress` addr
 		INNER JOIN `tabDynamic Link` link ON link.parent = addr.name
 		WHERE link.link_doctype = 'Company' AND link.link_name = %s
 		  AND addr.tax_id IS NOT NULL AND addr.tax_id != ''
-	""", (company,), as_dict=True)
-	
+	""",
+		(company,),
+		as_dict=True,
+	)
+
 	vat_numbers = [a.tax_id for a in addresses]
-	
+
 	# Also add Company's own tax_id if not already in the list
 	comp_tax_id = frappe.db.get_value("Company", company, "tax_id")
 	if comp_tax_id and comp_tax_id not in vat_numbers:
 		vat_numbers.append(comp_tax_id)
-		
+
 	return vat_numbers
 
 
@@ -723,7 +800,6 @@ def get_company_vat_accounts(company, vat_type):
 	accounts = frappe.get_all(
 		"VAT Account Configuration",
 		filters={"parent": company, "parenttype": "Company", "vat_type": vat_type},
-		pluck="vat_account"
+		pluck="vat_account",
 	)
 	return [a for a in accounts if a]
-

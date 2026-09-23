@@ -29,9 +29,7 @@ def distribute_policy(doc, method=None) -> None:
 	created = 0
 
 	for emp in employees:
-		if frappe.db.exists(
-			"HR Policy Acknowledgement", {"policy": doc.name, "employee": emp.name}
-		):
+		if frappe.db.exists("HR Policy Acknowledgement", {"policy": doc.name, "employee": emp.name}):
 			continue
 
 		frappe.get_doc(
@@ -80,8 +78,15 @@ def my_policies() -> list[dict]:
 		policy = frappe.db.get_value(
 			"HR Policy Document",
 			row.policy,
-			["policy_title", "policy_category", "version", "effective_date",
-			 "policy_document", "summary", "acknowledgement_deadline"],
+			[
+				"policy_title",
+				"policy_category",
+				"version",
+				"effective_date",
+				"policy_document",
+				"summary",
+				"acknowledgement_deadline",
+			],
 			as_dict=True,
 		)
 		row.update(policy or {})

@@ -6,14 +6,13 @@ frappe.ui.form.on("Dispensing Setting", {
 		frm.add_custom_button(__("Enable Has Dispense Lot from Lots"), function () {
 			frappe.confirm(
 				__(
-					"This will go through every <b>Dispensing Lot</b> and tick <b>Has Dispense Lot</b> "
-					+ "on the linked Item if it is not already checked. Having lots means the item is a "
-					+ "dispensing item. Runs in the background. Continue?"
+					"This will go through every <b>Dispensing Lot</b> and tick <b>Has Dispense Lot</b> " +
+						"on the linked Item if it is not already checked. Having lots means the item is a " +
+						"dispensing item. Runs in the background. Continue?"
 				),
 				function () {
 					frappe.call({
-						method:
-							"beveren_health.beveren_health.doctype.dispensing_setting.dispensing_setting.flag_has_dispense_lot_from_dispensing_lots",
+						method: "beveren_health.beveren_health.doctype.dispensing_setting.dispensing_setting.flag_has_dispense_lot_from_dispensing_lots",
 						callback: function (r) {
 							if (r.message && r.message.queued) {
 								frappe.show_alert({
@@ -45,7 +44,9 @@ frappe.realtime.on("dispensing_setting_flag_dispense_lot_done", function (data) 
 	});
 	if (data.message) {
 		frappe.msgprint({
-			title: data.error ? __("Enable Has Dispense Lot Failed") : __("Enable Has Dispense Lot"),
+			title: data.error
+				? __("Enable Has Dispense Lot Failed")
+				: __("Enable Has Dispense Lot"),
 			indicator: data.error ? "red" : "green",
 			message: msg,
 		});

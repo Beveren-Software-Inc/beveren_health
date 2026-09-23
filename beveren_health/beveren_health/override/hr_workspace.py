@@ -71,8 +71,18 @@ def _ensure_link(workspace: str, card: str, doctype: str, after: str) -> None:
 	rows = []
 	for link in ws.links:
 		row = link.as_dict()
-		for key in ("name", "parent", "parentfield", "parenttype", "creation", "modified",
-		            "modified_by", "owner", "docstatus", "idx"):
+		for key in (
+			"name",
+			"parent",
+			"parentfield",
+			"parenttype",
+			"creation",
+			"modified",
+			"modified_by",
+			"owner",
+			"docstatus",
+			"idx",
+		):
 			row.pop(key, None)
 		rows.append(row)
 
@@ -89,15 +99,18 @@ def _ensure_link(workspace: str, card: str, doctype: str, after: str) -> None:
 	if insert_at is None:
 		insert_at = len(rows)
 
-	rows.insert(insert_at, {
-		"type": "Link",
-		"label": doctype,
-		"link_type": "DocType",
-		"link_to": doctype,
-		"onboard": 0,
-		"is_query_report": 0,
-		"hidden": 0,
-	})
+	rows.insert(
+		insert_at,
+		{
+			"type": "Link",
+			"label": doctype,
+			"link_type": "DocType",
+			"link_to": doctype,
+			"onboard": 0,
+			"is_query_report": 0,
+			"hidden": 0,
+		},
+	)
 
 	ws.links = []
 	for row in rows:

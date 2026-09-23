@@ -157,7 +157,7 @@ def get_label_data_for_batch(batch_name):
 		"batch_no": batch_name,
 		"expiry_date": expiry_date,
 	}
- 
+
 
 @frappe.whitelist()
 def get_batch_and_expiry_from_bundle(serial_and_batch_bundle):
@@ -165,7 +165,9 @@ def get_batch_and_expiry_from_bundle(serial_and_batch_bundle):
 	Get batch_no and expiry_date from a Serial and Batch Bundle.
 	Returns the first batch in the bundle (for label printing when item row has no batch_no field).
 	"""
-	if not serial_and_batch_bundle or not frappe.db.exists("Serial and Batch Bundle", serial_and_batch_bundle):
+	if not serial_and_batch_bundle or not frappe.db.exists(
+		"Serial and Batch Bundle", serial_and_batch_bundle
+	):
 		return {"batch_no": None, "expiry_date": None}
 
 	try:

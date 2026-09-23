@@ -11,13 +11,14 @@ def create_medication_label_print_format():
 	if frappe.db.exists("Print Format", "Medication Label"):
 		return
 
-	print_format = frappe.get_doc({
-		"doctype": "Print Format",
-		"name": "Medication Label",
-		"print_format_type": "Jinja",
-		"standard": "No",
-		"doc_type": "Purchase Receipt",
-		"html": """
+	print_format = frappe.get_doc(
+		{
+			"doctype": "Print Format",
+			"name": "Medication Label",
+			"print_format_type": "Jinja",
+			"standard": "No",
+			"doc_type": "Purchase Receipt",
+			"html": """
 {%- set item_row = None -%}
 {%- set item_row_name = None -%}
 {%- if frappe.form_dict and frappe.form_dict.item_row_name -%}
@@ -61,7 +62,7 @@ def create_medication_label_print_format():
 		<div style="font-size: 8px; margin-top: -2px; font-family: monospace;">{{ barcode_value }}</div>
 		{% endif %}
 	</div>
-	
+
 	<div style="border-top: 1px solid #ccc; padding-top: 4px; margin-top: 4px;">
 		<div style="font-weight: bold; font-size: 10px; margin-bottom: 2px; text-align: center; line-height: 1.1;">{{ item_row.item_name or item_code }}</div>
 		<div style="font-size: 8px; margin-bottom: 1px; line-height: 1.1;">
@@ -85,7 +86,7 @@ def create_medication_label_print_format():
 <div>No item selected for printing</div>
 {% endif %}
 		""",
-		"css": """
+			"css": """
 .medication-label {
 	page-break-inside: avoid;
 	display: inline-block;
@@ -95,8 +96,9 @@ def create_medication_label_print_format():
 	margin: 0;
 }
 		""",
-		"disabled": 0
-	})
+			"disabled": 0,
+		}
+	)
 
 	print_format.insert(ignore_permissions=True)
 	frappe.db.commit()
@@ -114,8 +116,5 @@ def setup_print_format():
 		create_medication_label_print_format()
 		frappe.msgprint("Medication Label print format created successfully")
 	except Exception as e:
-		frappe.log_error(
-			title="Print Format Setup Error",
-			message=f"Error creating print format: {str(e)}"
-		)
-		frappe.throw(f"Error creating print format: {str(e)}")
+		frappe.log_error(title="Print Format Setup Error", message=f"Error creating print format: {e!s}")
+		frappe.throw(f"Error creating print format: {e!s}")

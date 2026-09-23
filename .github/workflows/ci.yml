@@ -1,10 +1,11 @@
 name: CI
 
+# Every commit is linted; the heavier `tests` job stays scoped to `develop`
+# and pull requests (see its `if:` condition).
 on:
   push:
-    branches:
-      - develop
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: develop-beveren_health-${{ github.event.number }}
@@ -12,6 +13,8 @@ concurrency:
 
 jobs:
   tests:
+    # Full bench install + unit tests: only for pull requests and `develop`.
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -105,3 +108,65 @@ jobs:
           bench --site test_site run-tests --app beveren_health
         env:
           TYPE: server
+
+  linters:
+    name: 'Frappe Linter (pre-commit + Semgrep)'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Semgrep diffs the change against the previous commit / PR base.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: ${{ runner.os }}-pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pre-commit-
+
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          pip install pre-commit
+
+      - name: Resolve Semgrep baseline commit
+        run: |
+          base='${{ github.event.pull_request.base.sha || github.event.before }}'
+          case "$base" in
+            "" | 0000000000000000000000000000000000000000)
+              # New branch: compare against the default branch.
+              base="$(git merge-base "origin/${{ github.event.repository.default_branch }}" HEAD || true)"
+              ;;
+          esac
+          echo "SEMGREP_BASELINE_COMMIT=$base" >> "$GITHUB_ENV"
+          echo "Semgrep baseline: ${base:-<whole tree>}"
+
+      - name: Check for "[skip semgrep]" marker
+        id: semgrep_marker
+        run: |
+          if git log -1 --pretty=%B | grep -qiF '[skip semgrep]'; then
+            # Escape hatch for one-off commits that reformat whole files (for
+            # example the first `pre-commit run --all-files`): semgrep's baseline
+            # matches changed lines, so a reformat makes the pre-existing
+            # findings in those files look new.
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Found [skip semgrep] in $(git log -1 --pretty=%h) - skipping the Semgrep check."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run pre-commit (Semgrep hook)
+        # Only the semgrep hook is run here: it reports the findings introduced
+        # by the commit/PR (see scripts/run_semgrep.sh). The remaining hooks
+        # still have pre-existing findings when run on the whole tree; they are
+        # executed on pull requests by .github/workflows/linter.yml.
+        if: steps.semgrep_marker.outputs.skip != 'true'
+        run: pre-commit run semgrep --all-files

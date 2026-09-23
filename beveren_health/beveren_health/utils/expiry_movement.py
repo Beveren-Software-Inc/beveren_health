@@ -80,16 +80,22 @@ def move_expired_batches_to_expiry_warehouse():
 			if wh_company != expiry_warehouse_company:
 				continue
 
-			items_to_transfer.append({
-				"item_code": item_code,
-				"batch_no": batch_no,
-				"s_warehouse": wh,
-				"t_warehouse": default_expiry_warehouse,
-				"qty": qty,
-			})
+			items_to_transfer.append(
+				{
+					"item_code": item_code,
+					"batch_no": batch_no,
+					"s_warehouse": wh,
+					"t_warehouse": default_expiry_warehouse,
+					"qty": qty,
+				}
+			)
 
 	if not items_to_transfer:
-		return {"success": True, "message": _("No expired batch stock to move (all already in expiry warehouse)."), "stock_entries": []}
+		return {
+			"success": True,
+			"message": _("No expired batch stock to move (all already in expiry warehouse)."),
+			"stock_entries": [],
+		}
 
 	# Create Stock Entry per company (Material Transfer)
 	created_entries = []

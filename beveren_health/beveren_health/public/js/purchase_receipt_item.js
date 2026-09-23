@@ -22,17 +22,25 @@ function item_name_line(item_doc, batch_uom) {
 		(item_doc.custom_strength || "").trim(),
 		(item_doc.custom_pharmaceutical_form || "").trim(),
 		uom,
-		(item_doc.custom_number_of_pack != null && item_doc.custom_number_of_pack !== "" ? String(item_doc.custom_number_of_pack) : "").trim()
+		(item_doc.custom_number_of_pack != null && item_doc.custom_number_of_pack !== ""
+			? String(item_doc.custom_number_of_pack)
+			: ""
+		).trim(),
 	].filter(Boolean);
 	return parts.length ? parts.join(" ") : "N/A";
 }
 
 function build_label_html(data) {
-	const barcode_number = (data.barcode_value != null && data.barcode_value !== "") ? data.barcode_value : "N/A";
+	const barcode_number =
+		data.barcode_value != null && data.barcode_value !== "" ? data.barcode_value : "N/A";
 	const item_code = data.item_code || "N/A";
 	const item_name_line_val = data.item_name_line || item_name_line(data.item_doc || {});
-	const standard_selling_price = data.standard_selling_price != null ? data.standard_selling_price : "N/A";
-	const batch_number = (data.batch_no_display != null && data.batch_no_display !== "") ? data.batch_no_display : "N/A";
+	const standard_selling_price =
+		data.standard_selling_price != null ? data.standard_selling_price : "N/A";
+	const batch_number =
+		data.batch_no_display != null && data.batch_no_display !== ""
+			? data.batch_no_display
+			: "N/A";
 	const expiry_date = data.expiry_date != null ? data.expiry_date : "N/A";
 	return `
 		<div class="medication-label">
@@ -60,19 +68,19 @@ function resolve_batch_and_expiry(item_row, item_doc, done) {
 		frappe.call({
 			method: "frappe.client.get",
 			args: { doctype: "Batch", name: item_row.batch_no },
-			callback: function(batch_r) {
+			callback: function (batch_r) {
 				if (batch_r.message && batch_r.message.expiry_date) {
 					expiry_date = frappe.datetime.str_to_user(batch_r.message.expiry_date);
 				}
 				batch_uom = (batch_r.message && batch_r.message.uom) || null;
 				done({ batch_no_display: item_row.batch_no, expiry_date, batch_uom });
-			}
+			},
 		});
 	} else if (item_row.serial_and_batch_bundle) {
 		frappe.call({
 			method: "beveren_health.beveren_health.utils.label_printing.get_batch_and_expiry_from_bundle",
 			args: { serial_and_batch_bundle: item_row.serial_and_batch_bundle },
-			callback: function(bundle_r) {
+			callback: function (bundle_r) {
 				if (bundle_r.message && bundle_r.message.batch_no) {
 					batch_no_display = bundle_r.message.batch_no;
 					if (bundle_r.message.expiry_date) {
@@ -81,7 +89,7 @@ function resolve_batch_and_expiry(item_row, item_doc, done) {
 					batch_uom = bundle_r.message.uom || null;
 				}
 				done({ batch_no_display: batch_no_display || null, expiry_date, batch_uom });
-			}
+			},
 		});
 	} else {
 		done({ batch_no_display: null, expiry_date, batch_uom: null });
@@ -93,7 +101,7 @@ function fetch_label_data_for_row(item_row) {
 		frappe.call({
 			method: "frappe.client.get",
 			args: { doctype: "Item", name: item_row.item_code },
-			callback: function(r) {
+			callback: function (r) {
 				if (!r.message) {
 					resolve(null);
 					return;
@@ -115,9 +123,12 @@ function fetch_label_data_for_row(item_row) {
 					return;
 				}
 				let standard_rate = item_doc.standard_rate || 0;
-				let standard_selling_price = format_currency(standard_rate, frappe.defaults.get_default("currency") || "USD");
+				let standard_selling_price = format_currency(
+					standard_rate,
+					frappe.defaults.get_default("currency") || "USD"
+				);
 
-				resolve_batch_and_expiry(item_row, item_doc, function(batch_info) {
+				resolve_batch_and_expiry(item_row, item_doc, function (batch_info) {
 					resolve({
 						item_row,
 						item_doc,
@@ -127,10 +138,10 @@ function fetch_label_data_for_row(item_row) {
 						item_name_line: item_name_line(item_doc, batch_info.batch_uom),
 						standard_selling_price,
 						expiry_date: batch_info.expiry_date,
-						batch_no_display: batch_info.batch_no_display
+						batch_no_display: batch_info.batch_no_display,
 					});
 				});
-			}
+			},
 		});
 	});
 }
@@ -184,12 +195,9 @@ function fetch_label_data_for_row(item_row) {
 // MAIN PRINT BUTTON
 // --------------------------------------------------
 frappe.ui.form.on("Purchase Receipt", {
-
 	refresh(frm) {
-
-		frm.add_custom_button(__("Label Print"), function() {
-
-			let items = (frm.doc.items || []).filter(r => r.item_code);
+		frm.add_custom_button(__("Label Print"), function () {
+			let items = (frm.doc.items || []).filter((r) => r.item_code);
 
 			if (!items.length) {
 				frappe.msgprint(__("No items to print."));
@@ -198,17 +206,15 @@ frappe.ui.form.on("Purchase Receipt", {
 
 			frappe.dom.freeze(__("Preparing labels..."));
 
-			let promises = items.map(r => fetch_label_data_for_row(r));
+			let promises = items.map((r) => fetch_label_data_for_row(r));
 
-			Promise.all(promises).then(results => {
-
+			Promise.all(promises).then((results) => {
 				frappe.dom.unfreeze();
 
 				let labels_html = [];
 				let skipped = 0;
 
-				results.forEach(data => {
-
+				results.forEach((data) => {
 					if (!data) {
 						skipped++;
 						return;
@@ -219,9 +225,7 @@ frappe.ui.form.on("Purchase Receipt", {
 
 					for (let i = 0; i < qty; i++) {
 						labels_html.push(
-							'<div class="label-page">' +
-							build_label_html(data) +
-							'</div>'
+							'<div class="label-page">' + build_label_html(data) + "</div>"
 						);
 					}
 				});
@@ -234,29 +238,31 @@ frappe.ui.form.on("Purchase Receipt", {
 				if (skipped) {
 					frappe.show_alert({
 						message: __("{0} item(s) skipped (no barcode).", [skipped]),
-						indicator: "orange"
+						indicator: "orange",
 					});
 				}
 
 				let w = window.open("", "_blank");
 
 				w.document.write(
-					"<html><head><style>" + LABEL_CSS + "</style></head><body>" +
-					labels_html.join("") +
-					"<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}<\/script>" +
-					"</body></html>"
+					"<html><head><style>" +
+						LABEL_CSS +
+						"</style></head><body>" +
+						labels_html.join("") +
+						"<script>window.onload=function(){window.print();window.onafterprint=function(){window.close();}}</script>" +
+						"</body></html>"
 				);
 
 				w.document.close();
 			});
 		});
-	}
+	},
 });
 
 frappe.ui.form.on("Purchase Receipt Item", {
 	custom_label_print(frm, cdt, cdn) {
 		let item = locals[cdt][cdn];
-		
+
 		if (!item.item_code) {
 			frappe.msgprint(__("Please select an item first"));
 			return;
@@ -267,14 +273,14 @@ frappe.ui.form.on("Purchase Receipt Item", {
 			method: "frappe.client.get",
 			args: {
 				doctype: "Item",
-				name: item.item_code
+				name: item.item_code,
 			},
-			callback: function(r) {
+			callback: function (r) {
 				if (r.message) {
 					let item_doc = r.message;
 					let barcode_image = null;
 					let barcode_value = null;
-					
+
 					// Get barcode image from item
 					if (item_doc.barcodes && item_doc.barcodes.length > 0) {
 						for (let barcode_row of item_doc.barcodes) {
@@ -287,7 +293,7 @@ frappe.ui.form.on("Purchase Receipt Item", {
 					}
 
 					if (!barcode_image) {
-						frappe.msgprint(__('No barcode image found for this item.'));
+						frappe.msgprint(__("No barcode image found for this item."));
 						return;
 					}
 
@@ -296,12 +302,19 @@ frappe.ui.form.on("Purchase Receipt Item", {
 					let expiry_date = "N/A";
 					let batch_uom = null;
 
-					function render_single_label() {
-						const barcode_number = (barcode_value != null && barcode_value !== "") ? barcode_value : "N/A";
+					const render_single_label = function () {
+						const barcode_number =
+							barcode_value != null && barcode_value !== "" ? barcode_value : "N/A";
 						const item_code_val = item_doc.name || item.item_code || "N/A";
 						const item_name_line_val = item_name_line(item_doc, batch_uom);
-						const standard_selling_price = format_currency(item_doc.standard_rate || 0, frappe.defaults.get_default("currency") || "USD");
-						const batch_label = batch_no_display != null && batch_no_display !== "" ? batch_no_display : "N/A";
+						const standard_selling_price = format_currency(
+							item_doc.standard_rate || 0,
+							frappe.defaults.get_default("currency") || "USD"
+						);
+						const batch_label =
+							batch_no_display != null && batch_no_display !== ""
+								? batch_no_display
+								: "N/A";
 
 						let printWindow = window.open("", "_blank");
 						printWindow.document.open();
@@ -338,38 +351,41 @@ frappe.ui.form.on("Purchase Receipt Item", {
 						</html>
 						`);
 						printWindow.document.close();
-					}
+					};
 
 					if (item.batch_no) {
 						frappe.call({
 							method: "frappe.client.get",
 							args: { doctype: "Batch", name: item.batch_no },
-							callback: function(batch_r) {
+							callback: function (batch_r) {
 								if (batch_r.message && batch_r.message.expiry_date) {
-									expiry_date = frappe.datetime.str_to_user(batch_r.message.expiry_date);
+									expiry_date = frappe.datetime.str_to_user(
+										batch_r.message.expiry_date
+									);
 								}
 								batch_uom = (batch_r.message && batch_r.message.uom) || null;
 								render_single_label();
-							}
+							},
 						});
 					} else if (item.serial_and_batch_bundle) {
 						frappe.call({
 							method: "beveren_health.beveren_health.utils.label_printing.get_batch_and_expiry_from_bundle",
 							args: { serial_and_batch_bundle: item.serial_and_batch_bundle },
-							callback: function(bundle_r) {
+							callback: function (bundle_r) {
 								if (bundle_r.message && bundle_r.message.batch_no) {
 									batch_no_display = bundle_r.message.batch_no;
-									if (bundle_r.message.expiry_date) expiry_date = bundle_r.message.expiry_date;
+									if (bundle_r.message.expiry_date)
+										expiry_date = bundle_r.message.expiry_date;
 									batch_uom = bundle_r.message.uom || null;
 								}
 								render_single_label();
-							}
+							},
 						});
 					} else {
 						render_single_label();
 					}
 				}
-			}
+			},
 		});
-	}
+	},
 });

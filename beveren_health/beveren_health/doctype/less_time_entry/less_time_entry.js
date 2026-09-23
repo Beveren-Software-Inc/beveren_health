@@ -9,7 +9,7 @@ frappe.ui.form.on("Less Time Entry", {
 					frappe.msgprint({
 						title: __("Missing Fields"),
 						message: __(
-							"Please fill in Employee, Posting Date, and Company before fetching lesstime details.",
+							"Please fill in Employee, Posting Date, and Company before fetching lesstime details."
 						),
 						indicator: "orange",
 					});
@@ -18,12 +18,12 @@ frappe.ui.form.on("Less Time Entry", {
 				}
 			});
 		}
-        frm.set_df_property('overtime_details', 'reqd', 0);
-        document.querySelectorAll(".btn-new").forEach((el) => {
-            if (el.getAttribute("data-doctype") == "Additional Salary") {
-                el.style.display = "none";
-            }
-        });
+		frm.set_df_property("overtime_details", "reqd", 0);
+		document.querySelectorAll(".btn-new").forEach((el) => {
+			if (el.getAttribute("data-doctype") == "Additional Salary") {
+				el.style.display = "none";
+			}
+		});
 	},
 
 	employee(frm) {
@@ -54,23 +54,23 @@ frappe.ui.form.on("Less Time Entry", {
 			});
 		}
 	},
-	start_date: function(frm) {
-        if (frm.doc.start_date) {
-            let end_date = frappe.datetime.add_days(
-                frappe.datetime.add_months(frm.doc.start_date, 1),
-                -1
-            );
-            frm.set_value('end_date', end_date);
-        }
-    },
+	start_date: function (frm) {
+		if (frm.doc.start_date) {
+			let end_date = frappe.datetime.add_days(
+				frappe.datetime.add_months(frm.doc.start_date, 1),
+				-1
+			);
+			frm.set_value("end_date", end_date);
+		}
+	},
 
-    end_date: function(frm) {
-        if (frm.doc.end_date) {
-            let start_date = frappe.datetime.add_days(
-                frappe.datetime.add_months(frm.doc.end_date, -1),
-                1
-            );
-            frm.set_value('start_date', start_date);
-        }
-    }
+	end_date: function (frm) {
+		if (frm.doc.end_date) {
+			let start_date = frappe.datetime.add_days(
+				frappe.datetime.add_months(frm.doc.end_date, -1),
+				1
+			);
+			frm.set_value("start_date", start_date);
+		}
+	},
 });

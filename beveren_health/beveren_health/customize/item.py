@@ -24,22 +24,20 @@ def on_update(doc, method):
 			try:
 				# Determine barcode type (default to EAN13)
 				barcode_type = barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
-				
+
 				# Generate barcode image
 				image_path = generate_barcode_image(barcode_row.barcode, barcode_type)
-				
+
 				# Update the barcode row with the image
 				barcode_row.custom_image = image_path
-				
+
 				frappe.msgprint(
-					f"Generated barcode image for {barcode_row.barcode}",
-					indicator="green",
-					alert=True
+					f"Generated barcode image for {barcode_row.barcode}", indicator="green", alert=True
 				)
 			except Exception as e:
 				frappe.log_error(
 					title="Barcode Image Generation Error",
-					message=f"Error generating barcode image for {barcode_row.barcode}: {str(e)}"
+					message=f"Error generating barcode image for {barcode_row.barcode}: {e!s}",
 				)
 
 
@@ -52,8 +50,7 @@ def _run_migrate_serials_to_dispensing_lots_for_item(item_code):
 	if not has_batch_no:
 		frappe.throw(
 			_(
-				"Item {0} does not have Batch enabled. "
-				"Dispensing Lots require a batch on each Serial No."
+				"Item {0} does not have Batch enabled. " "Dispensing Lots require a batch on each Serial No."
 			).format(item_code)
 		)
 
@@ -67,9 +64,7 @@ def _run_migrate_serials_to_dispensing_lots_for_item(item_code):
 			"errors": [],
 		}
 
-	return _run_migrate_serials_for_item_codes(
-		[item_code], item_code, source_doctype="Item"
-	)
+	return _run_migrate_serials_for_item_codes([item_code], item_code, source_doctype="Item")
 
 
 def _run_migrate_serials_to_dispensing_lots_for_item_job(item_code):

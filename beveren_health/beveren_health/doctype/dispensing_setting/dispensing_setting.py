@@ -53,9 +53,7 @@ def _run_flag_has_dispense_lot_from_lots():
 			if cint(frappe.db.get_value("Item", item_code, "custom_has_dispense_lot") or 0):
 				skipped.append(item_code)
 				continue
-			frappe.db.set_value(
-				"Item", item_code, "custom_has_dispense_lot", 1, update_modified=True
-			)
+			frappe.db.set_value("Item", item_code, "custom_has_dispense_lot", 1, update_modified=True)
 			updated.append(item_code)
 		except Exception as e:
 			errors.append(f"{item_code}: {e}")
@@ -66,9 +64,9 @@ def _run_flag_has_dispense_lot_from_lots():
 
 	frappe.db.commit()
 
-	message = _(
-		"Has Dispense Lot enabled on {0} item(s) ({1} already set, {2} error(s))."
-	).format(len(updated), len(skipped), len(errors))
+	message = _("Has Dispense Lot enabled on {0} item(s) ({1} already set, {2} error(s)).").format(
+		len(updated), len(skipped), len(errors)
+	)
 
 	return {
 		"message": message,

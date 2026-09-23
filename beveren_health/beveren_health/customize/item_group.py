@@ -27,7 +27,12 @@ def _run_generate_barcodes_for_item_group(item_group):
 	)
 
 	if not items:
-		return {"message": f"No active items found in group {item_group}", "generated_barcodes": 0, "generated_images": 0, "skipped_count": 0}
+		return {
+			"message": f"No active items found in group {item_group}",
+			"generated_barcodes": 0,
+			"generated_images": 0,
+			"skipped_count": 0,
+		}
 
 	generated_barcodes = 0
 	generated_images = 0
@@ -65,7 +70,7 @@ def _run_generate_barcodes_for_item_group(item_group):
 			except Exception as e:
 				frappe.log_error(
 					title="Barcode Image Generation Error",
-					message=f"Error generating barcode image for {barcode_row_to_update.barcode} (item {item.item_code}): {str(e)}",
+					message=f"Error generating barcode image for {barcode_row_to_update.barcode} (item {item.item_code}): {e!s}",
 				)
 		else:
 			new_barcode = generate_ean13_barcode()
@@ -90,7 +95,7 @@ def _run_generate_barcodes_for_item_group(item_group):
 			except Exception as e:
 				frappe.log_error(
 					title="Barcode Image Generation Error",
-					message=f"Error generating barcode image for {new_barcode} (item {item.item_code}): {str(e)}",
+					message=f"Error generating barcode image for {new_barcode} (item {item.item_code}): {e!s}",
 				)
 
 		if item_updated:
@@ -121,7 +126,7 @@ def _run_barcode_generation_job(item_group):
 	except Exception as e:
 		frappe.log_error(
 			title="Barcode Generation Error",
-			message=f"Error generating barcodes for item group {item_group}: {str(e)}",
+			message=f"Error generating barcodes for item group {item_group}: {e!s}",
 		)
 		_notify_barcode_generation_done(item_group, e)
 
@@ -161,6 +166,7 @@ def generate_barcodes_for_item_group(item_group):
 		"message": "Barcode generation has been started in the background. You will be notified when it completes.",
 	}
 
+
 # @frappe.whitelist()
 # def reverse_uom_conversions(item_group):
 #     """
@@ -168,64 +174,65 @@ def generate_barcodes_for_item_group(item_group):
 #     Changes from Unit/Nos-based to Pack-based
 #     Handles: PACK↔Unit and PACK↔Nos
 #     """
-    
+
 #     # Get all items in this item group
-#     items = frappe.get_all("Item", 
+#     items = frappe.get_all("Item",
 #         filters={"item_group": item_group},
 #         fields=["name"]
 #     )
-   
+
 #     updated_items = []
 #     errors = []
-    
+
 #     for item in items:
 #         try:
 #             item_doc = frappe.get_doc("Item", item.name)
-            
+
 #             # Check if item has UOM conversions
 #             if not item_doc.uoms:
 #                 continue
-            
+
 #             # First pass: Find the old PACK conversion factor
 #             old_pack_conversion = None
 #             for uom_row in item_doc.uoms:
 #                 if uom_row.uom in ["PACK", "Pack"]:
 #                     old_pack_conversion = uom_row.conversion_factor
 #                     break
-            
+
 #             # If no PACK found or it's already 1, skip
 #             if not old_pack_conversion or old_pack_conversion == 1:
 #                 continue
-            
+
 #             conversion_updated = False
-            
+
 #             # Second pass: Update conversions
 #             for uom_row in item_doc.uoms:
 #                 if uom_row.uom in ["PACK", "Pack"]:
 #                     # Set PACK as base (1)
 #                     uom_row.conversion_factor = 1
 #                     conversion_updated = True
-                    
+
 #                 elif uom_row.uom in ["Unit","UNITS", "UNIT", "Nos", "NOS", "nos"]:
 #                     # Set to 1/old_pack_conversion
 #                     # Old: PACK=30, Unit=1
 #                     # New: PACK=1, Unit=1/30
 #                     uom_row.conversion_factor = 1 / old_pack_conversion
 #                     conversion_updated = True
-            
+
 #             if conversion_updated:
 #                 item_doc.save()
 #                 updated_items.append(item.name)
-                
+
 #         except Exception as e:
 #             errors.append(f"{item.name}: {str(e)}")
-    
+
 #     return {
 #         "success": True,
 #         "updated_count": len(updated_items),
 #         "updated_items": updated_items,
 #         "errors": errors
 #     }
+
 
 def _run_clear_has_serial_no_for_item_group(item_group):
 	"""Set has_serial_no = 0 on all items in this item group (db.set_value per item)."""
@@ -246,7 +253,7 @@ def _run_clear_has_serial_no_for_item_group(item_group):
 			frappe.db.set_value("Item", item_name, "has_serial_no", 0, update_modified=False)
 			updated_items.append(item_name)
 		except Exception as e:
-			errors.append(f"{item_name}: {str(e)}")
+			errors.append(f"{item_name}: {e!s}")
 			frappe.log_error(
 				title="Clear has_serial_no Error",
 				message=f"Item {item_name} in group {item_group}: {e}",
@@ -254,9 +261,7 @@ def _run_clear_has_serial_no_for_item_group(item_group):
 
 	frappe.db.commit()
 
-	message = _("Cleared Has Serial No on {0} item(s) in group {1}.").format(
-		len(updated_items), item_group
-	)
+	message = _("Cleared Has Serial No on {0} item(s) in group {1}.").format(len(updated_items), item_group)
 	if errors:
 		message += " " + _("{0} error(s).").format(len(errors))
 
@@ -343,9 +348,7 @@ def _batch_item_mismatch(batch_no, item_code):
 	return None
 
 
-def _migrate_one_serial_to_dispensing_lot(
-	serial_row, source_document, source_doctype="Item Group"
-):
+def _migrate_one_serial_to_dispensing_lot(serial_row, source_document, source_doctype="Item Group"):
 	"""
 	Create one Dispensing Lot from an ERPNext Serial No row (migration only — does not alter Serial No).
 	"""
@@ -378,9 +381,7 @@ def _migrate_one_serial_to_dispensing_lot(
 	if not pack_size or pack_size <= 0:
 		pack_size = 1
 
-	gtin = serial_row.get("custom_gtin") or frappe.db.get_value(
-		"Item", item_code, "custom_gtin_number"
-	)
+	gtin = serial_row.get("custom_gtin") or frappe.db.get_value("Item", item_code, "custom_gtin_number")
 
 	warehouse = serial_row.get("warehouse")
 	serial_status = (serial_row.get("status") or "Active").strip()
@@ -471,8 +472,7 @@ def _run_migrate_serials_for_item_codes(item_codes, source_document, source_doct
 				frappe.log_error(
 					title="Serial to Dispensing Lot migration",
 					message=(
-						f"{source_doctype} {source_document}, serial {label}: "
-						f"{frappe.get_traceback()}"
+						f"{source_doctype} {source_document}, serial {label}: " f"{frappe.get_traceback()}"
 					),
 				)
 
@@ -496,9 +496,7 @@ def _run_migrate_serials_for_item_codes(item_codes, source_document, source_doct
 
 def _run_migrate_serials_to_dispensing_lots(item_group):
 	"""Create Dispensing Lot records from all Serial Nos for items in this item group."""
-	item_codes = frappe.get_all(
-		"Item", filters={"item_group": item_group}, pluck="name"
-	)
+	item_codes = frappe.get_all("Item", filters={"item_group": item_group}, pluck="name")
 
 	if not item_codes:
 		return {
@@ -509,9 +507,7 @@ def _run_migrate_serials_to_dispensing_lots(item_group):
 			"errors": [],
 		}
 
-	return _run_migrate_serials_for_item_codes(
-		item_codes, item_group, source_doctype="Item Group"
-	)
+	return _run_migrate_serials_for_item_codes(item_codes, item_group, source_doctype="Item Group")
 
 
 def _run_migrate_serials_to_dispensing_lots_job(item_group):
@@ -582,9 +578,7 @@ def _run_flag_dispense_lot_items_for_item_group(item_group):
 			"errors": [],
 		}
 
-	items_in_group = frappe.get_all(
-		"Item", filters={"item_group": item_group}, pluck="name"
-	)
+	items_in_group = frappe.get_all("Item", filters={"item_group": item_group}, pluck="name")
 	if not items_in_group:
 		return {
 			"message": _("No items in group {0}").format(item_group),
@@ -618,9 +612,7 @@ def _run_flag_dispense_lot_items_for_item_group(item_group):
 			if cint(frappe.db.get_value("Item", item_code, "custom_has_dispense_lot") or 0):
 				skipped.append(item_code)
 				continue
-			frappe.db.set_value(
-				"Item", item_code, "custom_has_dispense_lot", 1, update_modified=True
-			)
+			frappe.db.set_value("Item", item_code, "custom_has_dispense_lot", 1, update_modified=True)
 			updated.append(item_code)
 		except Exception as e:
 			errors.append(f"{item_code}: {e}")
@@ -727,9 +719,7 @@ def _run_clear_has_dispense_lot_for_item_group(item_group):
 			if not cint(frappe.db.get_value("Item", item_name, "custom_has_dispense_lot") or 0):
 				skipped.append(item_name)
 				continue
-			frappe.db.set_value(
-				"Item", item_name, "custom_has_dispense_lot", 0, update_modified=True
-			)
+			frappe.db.set_value("Item", item_name, "custom_has_dispense_lot", 0, update_modified=True)
 			updated_items.append(item_name)
 		except Exception as e:
 			errors.append(f"{item_name}: {e}")
@@ -812,97 +802,90 @@ def clear_has_dispense_lot_for_item_group(item_group):
 
 @frappe.whitelist()
 def reverse_uom_conversions(item_group):
-    """
-    Enqueue UOM conversion reversal to run in background
-    Returns immediately with job info
-    """
-    frappe.enqueue(
-        method='beveren_health.beveren_health.customize.item_group.reverse_uom_conversions_background',
-        queue='long',  # Use 'long' queue for time-consuming tasks
-        timeout=1200,
-        is_async=True,
-        job_name=f'UOM Reversal: {item_group}',
-        item_group=item_group
-    )
-    
-    return {
-        "success": True,
-        "message": f"UOM conversion reversal started for {item_group}. You'll be notified when complete."
-    }
+	"""
+	Enqueue UOM conversion reversal to run in background
+	Returns immediately with job info
+	"""
+	frappe.enqueue(
+		method="beveren_health.beveren_health.customize.item_group.reverse_uom_conversions_background",
+		queue="long",  # Use 'long' queue for time-consuming tasks
+		timeout=1200,
+		is_async=True,
+		job_name=f"UOM Reversal: {item_group}",
+		item_group=item_group,
+	)
+
+	return {
+		"success": True,
+		"message": f"UOM conversion reversal started for {item_group}. You'll be notified when complete.",
+	}
 
 
 def reverse_uom_conversions_background(item_group):
-    """
-    Background worker function - DO NOT call directly
-    This runs in the background queue
-    """
-    
-    # Get all items in this item group
-    items = frappe.get_all("Item", 
-        filters={"item_group": item_group},
-        fields=["name"]
-    )
-   
-    updated_items = []
-    errors = []
-    
-    for item in items:
-        try:
-            item_doc = frappe.get_doc("Item", item.name)
-            
-            # Check if item has UOM conversions
-            if not item_doc.uoms:
-                continue
-            
-            # First pass: Find the old PACK conversion factor
-            old_pack_conversion = None
-            for uom_row in item_doc.uoms:
-                if uom_row.uom in ["PACK", "Pack"]:
-                    old_pack_conversion = uom_row.conversion_factor
-                    break
-            
-            # If no PACK found or it's already 1, skip
-            if not old_pack_conversion or old_pack_conversion == 1:
-                continue
-            
-            conversion_updated = False
-            
-            # Second pass: Update conversions
-            for uom_row in item_doc.uoms:
-                if uom_row.uom in ["PACK", "Pack"]:
-                    # Set PACK as base (1)
-                    uom_row.conversion_factor = 1
-                    conversion_updated = True
-                    
-                elif uom_row.uom in ["Unit","UNITS", "UNIT", "Nos", "NOS", "nos"]:
-                    # Set to 1/old_pack_conversion
-                    uom_row.conversion_factor = 1 / old_pack_conversion
-                    conversion_updated = True
-            
-            if conversion_updated:
-                item_doc.save()
-                updated_items.append(item.name)
-                
-        except Exception as e:
-            errors.append(f"{item.name}: {str(e)}")
-            frappe.log_error(f"UOM Reversal Error for {item.name}", str(e))
-    
-    # Commit the transaction
-    frappe.db.commit()
-    
-    # Send real-time notification
-    frappe.publish_realtime(
-        event='uom_reversal_complete',
-        message={
-            'item_group': item_group,
-            'updated_count': len(updated_items),
-            'error_count': len(errors)
-        }
-    )
-    
-    return {
-        "success": True,
-        "updated_count": len(updated_items),
-        "updated_items": updated_items,
-        "errors": errors
-    }
+	"""
+	Background worker function - DO NOT call directly
+	This runs in the background queue
+	"""
+
+	# Get all items in this item group
+	items = frappe.get_all("Item", filters={"item_group": item_group}, fields=["name"])
+
+	updated_items = []
+	errors = []
+
+	for item in items:
+		try:
+			item_doc = frappe.get_doc("Item", item.name)
+
+			# Check if item has UOM conversions
+			if not item_doc.uoms:
+				continue
+
+			# First pass: Find the old PACK conversion factor
+			old_pack_conversion = None
+			for uom_row in item_doc.uoms:
+				if uom_row.uom in ["PACK", "Pack"]:
+					old_pack_conversion = uom_row.conversion_factor
+					break
+
+			# If no PACK found or it's already 1, skip
+			if not old_pack_conversion or old_pack_conversion == 1:
+				continue
+
+			conversion_updated = False
+
+			# Second pass: Update conversions
+			for uom_row in item_doc.uoms:
+				if uom_row.uom in ["PACK", "Pack"]:
+					# Set PACK as base (1)
+					uom_row.conversion_factor = 1
+					conversion_updated = True
+
+				elif uom_row.uom in ["Unit", "UNITS", "UNIT", "Nos", "NOS", "nos"]:
+					# Set to 1/old_pack_conversion
+					uom_row.conversion_factor = 1 / old_pack_conversion
+					conversion_updated = True
+
+			if conversion_updated:
+				item_doc.save()
+				updated_items.append(item.name)
+
+		except Exception as e:
+			errors.append(f"{item.name}: {e!s}")
+			frappe.log_error(f"UOM Reversal Error for {item.name}", str(e))
+
+	# Commit the transaction
+	frappe.db.commit()
+
+	# Send real-time notification
+	frappe.publish_realtime(
+		event="uom_reversal_complete",
+		message={"item_group": item_group, "updated_count": len(updated_items), "error_count": len(errors)},
+	)
+
+	return {
+		"success": True,
+		"updated_count": len(updated_items),
+		"updated_items": updated_items,
+		"errors": errors,
+	}

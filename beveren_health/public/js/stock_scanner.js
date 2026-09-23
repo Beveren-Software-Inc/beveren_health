@@ -40,7 +40,7 @@ function ss_sync_qty_from_lots(frm, cdt, cdn) {
 	const lot_count = ss_count_lots(row.serial_no);
 	const row_qty = flt(row.qty);
 	// One partial pack can have fractional qty (e.g. 0.655); only count lots when qty unset or multiple packs.
-	const qty = lot_count > 1 ? lot_count : (row_qty > 0 ? row_qty : lot_count || 0);
+	const qty = lot_count > 1 ? lot_count : row_qty > 0 ? row_qty : lot_count || 0;
 	const rate = flt(row.valuation_rate);
 	frappe.model.set_value(cdt, cdn, "qty", qty);
 	frappe.model.set_value(cdt, cdn, "current_qty", qty);
@@ -458,7 +458,9 @@ function ss_handle_move_to_existing(frm, result) {
 function ss_run_scan(frm, cdt, cdn, row, barcode) {
 	const warehouse = row.warehouse || frm.doc.set_warehouse;
 	if (!warehouse) {
-		frappe.msgprint(__("Set Default Warehouse on the form or warehouse on the row before scanning."));
+		frappe.msgprint(
+			__("Set Default Warehouse on the form or warehouse on the row before scanning.")
+		);
 		frappe.model.set_value(cdt, cdn, "scanner", "");
 		return;
 	}
@@ -469,7 +471,15 @@ function ss_run_scan(frm, cdt, cdn, row, barcode) {
 	if (frm.is_new()) {
 		frm.save_or_update({
 			callback() {
-				ss_process_scan(frm, cdt, cdn, locals[cdt][cdn], barcode, current_row_idx, warehouse);
+				ss_process_scan(
+					frm,
+					cdt,
+					cdn,
+					locals[cdt][cdn],
+					barcode,
+					current_row_idx,
+					warehouse
+				);
 			},
 			error() {
 				frappe.msgprint(__("Save the document first, then scan again."));
@@ -496,7 +506,9 @@ function show_create_stock_recon_dialog(frm) {
 			}
 
 			const options = scanners.map((s) => ({
-				label: `${s.name} — ${frappe.datetime.str_to_user(s.posting_date)} (${s.set_warehouse || __("No warehouse")})`,
+				label: `${s.name} — ${frappe.datetime.str_to_user(s.posting_date)} (${
+					s.set_warehouse || __("No warehouse")
+				})`,
 				value: s.name,
 			}));
 
@@ -525,8 +537,7 @@ function show_create_stock_recon_dialog(frm) {
 						return;
 					}
 					frappe.call({
-						method:
-							"beveren_health.beveren_health.customize.stock_scanner.create_stock_reconciliation_from_scanners",
+						method: "beveren_health.beveren_health.customize.stock_scanner.create_stock_reconciliation_from_scanners",
 						args: { scanner_names: selected },
 						freeze: true,
 						freeze_message: __("Creating Stock Reconciliation..."),
@@ -551,7 +562,9 @@ function show_create_stock_recon_dialog(frm) {
 								title: __("Could not create Stock Reconciliation"),
 								indicator: "red",
 								message:
-									(r.message && r.message.messages && r.message.messages.join("<br>")) ||
+									(r.message &&
+										r.message.messages &&
+										r.message.messages.join("<br>")) ||
 									r.message ||
 									__("Unknown error"),
 							});
@@ -586,7 +599,8 @@ frappe.ui.form.on("Stock Scanner", {
 		if (frm.doc.stock_reconciliation) {
 			frm.add_custom_button(
 				__("Stock Reconciliation"),
-				() => frappe.set_route("Form", "Stock Reconciliation", frm.doc.stock_reconciliation),
+				() =>
+					frappe.set_route("Form", "Stock Reconciliation", frm.doc.stock_reconciliation),
 				__("View")
 			);
 		}
@@ -613,7 +627,11 @@ frappe.ui.form.on("Stock Scanner Item", {
 			return;
 		}
 		if (frm.doc.docstatus === 1) {
-			frappe.msgprint(__("Cannot scan on a submitted Stock Scanner. Amend the document to continue scanning."));
+			frappe.msgprint(
+				__(
+					"Cannot scan on a submitted Stock Scanner. Amend the document to continue scanning."
+				)
+			);
 			frappe.model.set_value(cdt, cdn, "scanner", "");
 			return;
 		}

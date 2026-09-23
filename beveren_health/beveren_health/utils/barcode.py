@@ -1,10 +1,11 @@
 # Copyright (c) 2026, Beveren Software and contributors
 # For license information, please see license.txt
 
-import frappe
-from frappe.utils.file_manager import save_file
 import os
 import re
+
+import frappe
+from frappe.utils.file_manager import save_file
 
 # ERPNext Item Barcode allowed value (not "EAN13")
 DEFAULT_BARCODE_TYPE = "EAN-13"
@@ -79,9 +80,9 @@ def generate_barcode_image(barcode_value, barcode_type=DEFAULT_BARCODE_TYPE):
 	except Exception as e:
 		frappe.log_error(
 			title="Barcode Generation Error",
-			message=f"Error generating barcode for {barcode_value}: {str(e)}",
+			message=f"Error generating barcode for {barcode_value}: {e!s}",
 		)
-		frappe.throw(f"Error generating barcode: {str(e)}")
+		frappe.throw(f"Error generating barcode: {e!s}")
 
 
 def generate_ean13_barcode():

@@ -106,9 +106,7 @@ def _classify(template: str | None, tax_category: str | None) -> str:
 
 
 @frappe.whitelist()
-def get_vat_return(
-	from_date: str, to_date: str, company: str | None = None
-) -> dict:
+def get_vat_return(from_date: str, to_date: str, company: str | None = None) -> dict:
 	"""Compute the NBR VAT return for a period."""
 	company = company or frappe.defaults.get_user_default("Company")
 	from_date, to_date = getdate(from_date), getdate(to_date)
@@ -154,9 +152,7 @@ def get_vat_return(
 
 	total_sales = sum(b["amount"] for k, b in boxes.items() if "sales" in k or k == "exports")
 	output_vat = sum(b["vat"] for k, b in boxes.items() if "sales" in k or k == "exports")
-	total_purchases = sum(
-		b["amount"] for k, b in boxes.items() if "purchase" in k or "imports" in k
-	)
+	total_purchases = sum(b["amount"] for k, b in boxes.items() if "purchase" in k or "imports" in k)
 	input_vat = sum(b["vat"] for k, b in boxes.items() if "purchase" in k or "imports" in k)
 
 	return {
@@ -172,9 +168,7 @@ def get_vat_return(
 			"input_vat": round(input_vat, 3),
 			"net_vat_due": round(output_vat - input_vat, 3),
 		},
-		"note": _(
-			"Prepared from submitted invoices. Review before filing with the NBR."
-		),
+		"note": _("Prepared from submitted invoices. Review before filing with the NBR."),
 	}
 
 
@@ -191,8 +185,7 @@ def get_vat_return_lines(from_date: str, to_date: str, company: str | None = Non
 		(5, _("Exempt sales"), b["exempt_sales"]),
 		(6, _("Standard rated domestic purchases"), b["standard_purchases"]),
 		(7, _("Imports subject to VAT paid at customs"), b["imports_customs"]),
-		(8, _("Imports subject to VAT accounted for through reverse charge"),
-		 b["imports_reverse_charge"]),
+		(8, _("Imports subject to VAT accounted for through reverse charge"), b["imports_reverse_charge"]),
 		(9, _("Zero rated purchases"), b["zero_rated_purchases"]),
 		(10, _("Exempt purchases"), b["exempt_purchases"]),
 	]

@@ -54,13 +54,14 @@ def _expense_account_valid_for_purpose(purpose, account):
 def _apply_stock_reconciliation_defaults(sr, base_scanner=None):
 	"""Set accounts/cost center so insert passes validation; user can edit on the form."""
 	if not sr.cost_center:
-		sr.cost_center = (
-			(base_scanner and base_scanner.cost_center)
-			or frappe.db.get_value("Company", sr.company, "cost_center")
+		sr.cost_center = (base_scanner and base_scanner.cost_center) or frappe.db.get_value(
+			"Company", sr.company, "cost_center"
 		)
 
-	if base_scanner and base_scanner.expense_account and _expense_account_valid_for_purpose(
-		sr.purpose, base_scanner.expense_account
+	if (
+		base_scanner
+		and base_scanner.expense_account
+		and _expense_account_valid_for_purpose(sr.purpose, base_scanner.expense_account)
 	):
 		sr.expense_account = base_scanner.expense_account
 	else:
@@ -99,15 +100,11 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 		doc = frappe.get_doc("Stock Scanner", name)
 		if doc.docstatus != 1:
 			frappe.throw(
-				_("Stock Scanner {0} must be submitted before creating Stock Reconciliation.").format(
-					name
-				)
+				_("Stock Scanner {0} must be submitted before creating Stock Reconciliation.").format(name)
 			)
 		if doc.stock_recon_created:
 			frappe.throw(
-				_("Stock Scanner {0} is already included in a submitted Stock Reconciliation.").format(
-					name
-				)
+				_("Stock Scanner {0} is already included in a submitted Stock Reconciliation.").format(name)
 			)
 		if doc.get("stock_reconciliation"):
 			frappe.throw(
@@ -197,7 +194,7 @@ def create_stock_reconciliation_from_scanners(scanner_names):
 			).format(sr.company)
 		)
 
-	for key, entry in merged.items():
+	for _key, entry in merged.items():
 		qty = flt(entry.get("qty"))
 		if not qty:
 			qty = len(entry["lots"]) if entry["lots"] else 1
