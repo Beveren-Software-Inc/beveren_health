@@ -14,6 +14,14 @@ frappe.ui.form.on("Full and Final Statement", {
 				},
 			};
 		});
+
+		if (!frm.is_new() && frm.doc.docstatus === 0 && !frm.doc.custom_indemnity) {
+			frm.add_custom_button(
+				__("Generate Indemnity"),
+				() => _generate_indemnity(frm),
+				__("Create")
+			);
+		}
 	},
 
 	custom_indemnity(frm) {
@@ -44,6 +52,35 @@ frappe.ui.form.on("Full and Final Outstanding Statement", {
 		}
 	},
 });
+
+function _generate_indemnity(frm) {
+	if (frm.is_dirty()) {
+		frappe.msgprint({
+			title: __("Unsaved Changes"),
+			message: __("Please save the statement before generating the Indemnity."),
+			indicator: "orange",
+		});
+		return;
+	}
+
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.full_and_final_settlement.create_indemnity",
+		args: { fnf: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Generating Indemnity..."),
+		callback(r) {
+			if (!r.message) return;
+			frm.reload_doc().then(() => {
+				frappe.show_alert({
+					message: __("Indemnity {0} created", [
+						`<a href="/app/indemnity/${encodeURIComponent(r.message)}">${frappe.utils.escape_html(r.message)}</a>`,
+					]),
+					indicator: "green",
+				});
+			});
+		},
+	});
+}
 
 function _override_reference_queries(frm, type) {
 	frm.set_query("reference_document_type", type, function () {
