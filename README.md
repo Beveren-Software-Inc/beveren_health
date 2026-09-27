@@ -25,6 +25,19 @@ Or add it to your `requirements.txt`:
 python-barcode[images]
 ```
 
+### Documentation
+
+The user manuals and the technical reference live in [`docs/`](docs/README.md):
+
+* [docs/README.md](docs/README.md) — overview, install, feature inventory, doc index
+* [docs/user_manual.md](docs/user_manual.md) — HR, attendance, payroll, indemnity, Full & Final
+* [docs/user_manual_stock.md](docs/user_manual_stock.md) — pharmacy stock, scanning, labels, dispensing lots
+* [docs/user_manual_accounts.md](docs/user_manual_accounts.md) — cost centers, patient pricing, VAT, opening balances
+* [docs/operations.md](docs/operations.md) — configuration, scheduled jobs, maintenance scripts, testing, troubleshooting
+* [docs/reference/customizations.md](docs/reference/customizations.md) — every Custom Field / Property Setter the app adds
+* [docs/reference/hooks_and_api.md](docs/reference/hooks_and_api.md) — hooks, whitelisted API, doctype inventory
+
+
 ### Contributing
 
 This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
