@@ -1,11 +1,21 @@
 import frappe
 from frappe import _
 
+from beveren_health.beveren_health.customize.full_and_final_settlement import (
+	tag_outstanding_balance_employee_party,
+)
+
 
 class FullandFinalStatement:
 	def validate(self):
 		self._validate_unique_fnf()
 		super().validate()
+
+	def create_journal_entry(self):
+		# HRMS only tags the settlement Journal Entry with the Employee as party when a
+		# receivable row references an Employee Advance; the auto-generated outstanding
+		# balance row references an Additional Salary instead. See the helper.
+		return tag_outstanding_balance_employee_party(super().create_journal_entry(), self)
 
 	def get_payable_component(self):
 		return ["Expense Claim", "Bonus", "Leave Encashment"]

@@ -326,7 +326,11 @@ scheduler_events = {
 # Testing
 # -------
 
-# before_tests = "beveren_health.install.before_tests"
+# The site customization makes fields required that the records the test framework
+# creates for the app cannot fill in, which aborts `bench run-tests` with a
+# MandatoryError before a single test runs. The hook lifts those requirements for the
+# run, see beveren_health.install.before_tests.
+before_tests = "beveren_health.install.before_tests"
 
 # Extend DocType Class
 # ------------------------------
