@@ -73,7 +73,9 @@ function _generate_indemnity(frm) {
 			frm.reload_doc().then(() => {
 				frappe.show_alert({
 					message: __("Indemnity {0} created", [
-						`<a href="/app/indemnity/${encodeURIComponent(r.message)}">${frappe.utils.escape_html(r.message)}</a>`,
+						`<a href="/app/indemnity/${encodeURIComponent(
+							r.message
+						)}">${frappe.utils.escape_html(r.message)}</a>`,
 					]),
 					indicator: "green",
 				});
