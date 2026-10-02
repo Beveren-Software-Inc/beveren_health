@@ -578,6 +578,53 @@ function show_create_stock_recon_dialog(frm) {
 }
 
 frappe.ui.form.on("Stock Scanner", {
+	setup(frm) {
+		if (typeof erpnext !== "undefined" && erpnext.utils && erpnext.utils.BarcodeScanner) {
+			frm.barcode_scanner = new erpnext.utils.BarcodeScanner({
+				frm: frm,
+				uom_field: "stock_uom",
+			});
+		}
+	},
+
+	scan_barcode(frm) {
+		const barcode = (frm.doc.scan_barcode || "").trim();
+		if (!barcode) {
+			return;
+		}
+		if (frm.doc.docstatus === 1) {
+			frappe.msgprint(
+				__(
+					"Cannot scan on a submitted Stock Scanner. Amend the document to continue scanning."
+				)
+			);
+			frm.set_value("scan_barcode", "");
+			return;
+		}
+		if (!frm.barcode_scanner) {
+			frappe.msgprint(__("Barcode scanner is not available."));
+			frm.set_value("scan_barcode", "");
+			return;
+		}
+
+		frm.barcode_scanner
+			.process_scan()
+			.then((row) => {
+				if (!row) {
+					return;
+				}
+				if (!row.warehouse && frm.doc.set_warehouse) {
+					frappe.model.set_value(
+						row.doctype,
+						row.name,
+						"warehouse",
+						frm.doc.set_warehouse
+					);
+				}
+			})
+			.catch(() => {});
+	},
+
 	onload(frm) {
 		frm.current_focused_row = null;
 		frm.ss_scans_since_save = 0;
@@ -586,6 +633,18 @@ frappe.ui.form.on("Stock Scanner", {
 	},
 
 	refresh(frm) {
+		frm.set_query("batch_no", "items", function (doc, cdt, cdn) {
+			const row = locals[cdt][cdn];
+			if (!row || !row.item_code) {
+				return { filters: { name: ["in", []] } };
+			}
+			return {
+				filters: {
+					item: row.item_code,
+				},
+			};
+		});
+
 		setTimeout(() => ss_setup_row_click_tracking(frm), 300);
 
 		if (frm.doc.docstatus === 1) {
@@ -611,7 +670,17 @@ frappe.ui.form.on("Stock Scanner Item", {
 	item_code(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		if (!row.item_code) {
+			if (row.batch_no) {
+				frappe.model.set_value(cdt, cdn, "batch_no", "");
+			}
 			return;
+		}
+		if (row.batch_no) {
+			frappe.db.get_value("Batch", row.batch_no, "item", (r) => {
+				if (r && r.item && r.item !== row.item_code) {
+					frappe.model.set_value(cdt, cdn, "batch_no", "");
+				}
+			});
 		}
 		frappe.db.get_value("Item", row.item_code, "has_batch_no", (r) => {
 			if (r && cint(r.has_batch_no)) {

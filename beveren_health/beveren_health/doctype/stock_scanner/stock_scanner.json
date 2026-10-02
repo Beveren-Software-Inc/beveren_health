@@ -18,6 +18,7 @@
   "stock_reconciliation",
   "section_break_8",
   "set_warehouse",
+  "scan_barcode",
   "column_break_mvis",
   "cost_center",
   "sb9",
@@ -162,12 +163,18 @@
    "fieldname": "auto_save_scan_interval",
    "fieldtype": "Data",
    "label": "Auto Save Scan Interval"
+  },
+  {
+   "fieldname": "scan_barcode",
+   "fieldtype": "Data",
+   "label": "Scan Barcode",
+   "options": "Barcode"
   }
  ],
  "icon": "fa fa-upload-alt",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-10 13:02:43.534093",
+ "modified": "2026-10-02 13:12:04.393058",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Stock Scanner",
