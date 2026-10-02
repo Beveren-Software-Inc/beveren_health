@@ -29,6 +29,47 @@ frappe.ui.form.on("Dispensing Setting", {
 				function () {}
 			);
 		});
+
+		frm.add_custom_button(__("Import Medical UOMs"), function () {
+			const dialog = new frappe.ui.Dialog({
+				title: __("Import Medical UOMs"),
+				fields: [
+					{
+						fieldtype: "HTML",
+						fieldname: "help",
+						options: __(
+							"Upload a spreadsheet with a <b>UOM Name</b> column. Existing UOMs are marked <b>Is Medical</b>. UOMs that do not exist are created."
+						),
+					},
+					{
+						fieldname: "file",
+						fieldtype: "Attach",
+						label: __("UOM Spreadsheet"),
+						reqd: 1,
+					},
+				],
+				primary_action_label: __("Import"),
+				primary_action(values) {
+					frappe.call({
+						method: "beveren_health.beveren_health.doctype.dispensing_setting.dispensing_setting.import_medical_uoms",
+						args: { file_url: values.file },
+						freeze: true,
+						freeze_message: __("Importing UOMs..."),
+						callback(r) {
+							const msg = (r.message && r.message.message) || __("Import finished.");
+							const has_errors = r.message && (r.message.errors || []).length;
+							frappe.msgprint({
+								title: has_errors ? __("UOM Import") : __("UOM Import Complete"),
+								indicator: has_errors ? "orange" : "green",
+								message: msg,
+							});
+							dialog.hide();
+						},
+					});
+				},
+			});
+			dialog.show();
+		});
 	},
 });
 

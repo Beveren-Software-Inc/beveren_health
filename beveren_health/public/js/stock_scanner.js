@@ -577,52 +577,114 @@ function show_create_stock_recon_dialog(frm) {
 	});
 }
 
-frappe.ui.form.on("Stock Scanner", {
-	setup(frm) {
-		if (typeof erpnext !== "undefined" && erpnext.utils && erpnext.utils.BarcodeScanner) {
-			frm.barcode_scanner = new erpnext.utils.BarcodeScanner({
-				frm: frm,
-				uom_field: "stock_uom",
-			});
+function ss_refocus_header_scan(frm) {
+	setTimeout(() => {
+		const field = frm.fields_dict.scan_barcode;
+		if (field && field.$input) {
+			field.$input.focus();
 		}
-	},
+	}, 150);
+}
 
+/** Look up an item barcode and put it on its own line, even if that item is already listed. */
+function ss_add_item_line_from_barcode(frm, barcode, source_row) {
+	frappe.call({
+		method: "erpnext.stock.utils.scan_barcode",
+		args: {
+			search_value: barcode,
+			ctx: {
+				set_warehouse: frm.doc.set_warehouse || "",
+				company: frm.doc.company || "",
+			},
+		},
+		callback(r) {
+			const data = r.message || {};
+			if (!data.item_code) {
+				frappe.show_alert({
+					message: __("Cannot find Item with this Barcode"),
+					indicator: "red",
+				});
+				ss_refocus_header_scan(frm);
+				return;
+			}
+
+			frappe.db.get_value(
+				"Item",
+				data.item_code,
+				["item_name", "stock_uom", "item_group"],
+				(item) => {
+					item = item || {};
+					let cdt;
+					let cdn;
+					const row_is_empty = source_row && !source_row.item_code;
+					if (row_is_empty) {
+						cdt = source_row.doctype;
+						cdn = source_row.name;
+					} else {
+						const new_row = frm.add_child("items");
+						cdt = new_row.doctype;
+						cdn = new_row.name;
+					}
+
+					const values = {
+						item_code: data.item_code,
+						item_name: item.item_name || "",
+						item_group: item.item_group || "",
+						barcode: data.barcode || barcode,
+						qty: 1,
+						current_qty: 1,
+						warehouse:
+							(locals[cdt][cdn] && locals[cdt][cdn].warehouse) ||
+							frm.doc.set_warehouse ||
+							"",
+						stock_uom: data.uom || item.stock_uom || "",
+						use_serial_batch_fields: 1,
+						allow_zero_valuation_rate: 1,
+						scan_barcode: "",
+					};
+					if (data.batch_no) {
+						values.batch_no = data.batch_no;
+					}
+
+					frappe.model.set_value(cdt, cdn, values).then(() => {
+						if (item.item_name) {
+							frappe.model.set_value(cdt, cdn, "item_name", item.item_name);
+						}
+						frm.refresh_field("items");
+						const idx = (frm.doc.items || []).findIndex((row) => row.name === cdn);
+						if (idx >= 0) {
+							frm.current_focused_row = idx;
+							ss_highlight_row(frm, idx);
+							ss_scroll_to_row(frm, idx);
+						}
+						frappe.show_alert({
+							message: __("Added {0}", [item.item_name || data.item_code]),
+							indicator: "green",
+						});
+						ss_refocus_header_scan(frm);
+					});
+				}
+			);
+		},
+	});
+}
+
+frappe.ui.form.on("Stock Scanner", {
 	scan_barcode(frm) {
 		const barcode = (frm.doc.scan_barcode || "").trim();
 		if (!barcode) {
 			return;
 		}
+		frm.set_value("scan_barcode", "");
 		if (frm.doc.docstatus === 1) {
 			frappe.msgprint(
 				__(
 					"Cannot scan on a submitted Stock Scanner. Amend the document to continue scanning."
 				)
 			);
-			frm.set_value("scan_barcode", "");
 			return;
 		}
-		if (!frm.barcode_scanner) {
-			frappe.msgprint(__("Barcode scanner is not available."));
-			frm.set_value("scan_barcode", "");
-			return;
-		}
-
-		frm.barcode_scanner
-			.process_scan()
-			.then((row) => {
-				if (!row) {
-					return;
-				}
-				if (!row.warehouse && frm.doc.set_warehouse) {
-					frappe.model.set_value(
-						row.doctype,
-						row.name,
-						"warehouse",
-						frm.doc.set_warehouse
-					);
-				}
-			})
-			.catch(() => {});
+		ss_add_item_line_from_barcode(frm, barcode);
 	},
 
 	onload(frm) {
@@ -689,6 +751,24 @@ frappe.ui.form.on("Stock Scanner Item", {
 		});
 	},
 
+	scan_barcode(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		const barcode = (row.scan_barcode || "").trim();
+		if (!barcode) {
+			return;
+		}
+		frappe.model.set_value(cdt, cdn, "scan_barcode", "");
+		if (frm.doc.docstatus === 1) {
+			frappe.msgprint(
+				__(
+					"Cannot scan on a submitted Stock Scanner. Amend the document to continue scanning."
+				)
+			);
+			return;
+		}
+		ss_add_item_line_from_barcode(frm, barcode, row);
+	},
+
 	scanner(frm, cdt, cdn) {
 		const row = locals[cdt][cdn];
 		const barcode = (row.scanner || "").trim();
@@ -709,5 +789,34 @@ frappe.ui.form.on("Stock Scanner Item", {
 
 	serial_no(frm, cdt, cdn) {
 		ss_sync_qty_from_lots(frm, cdt, cdn);
+	},
+
+	add_new_batch(frm, cdt, cdn) {
+		const row = locals[cdt][cdn];
+		if (frm.doc.docstatus === 1) {
+			frappe.msgprint(__("Cannot add a batch on a submitted Stock Scanner."));
+			return;
+		}
+		if (!row.item_code) {
+			frappe.msgprint(__("Select an Item before adding a batch."));
+			return;
+		}
+
+		frappe.model.with_doctype("Batch", () => {
+			const batch = frappe.model.get_new_doc("Batch");
+			batch.item = row.item_code;
+			frappe.ui.form.make_quick_entry(
+				"Batch",
+				(doc) => {
+					if (!doc || !doc.name) {
+						return;
+					}
+					frappe.model.set_value(cdt, cdn, "batch_no", doc.name);
+					frappe.model.set_value(cdt, cdn, "use_serial_batch_fields", 1);
+				},
+				null,
+				batch
+			);
+		});
 	},
 });
