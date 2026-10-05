@@ -95,6 +95,7 @@
   },
   {
    "allow_bulk_edit": 1,
+   "allow_on_submit": 1,
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
@@ -174,7 +175,7 @@
  "icon": "fa fa-upload-alt",
  "is_submittable": 1,
  "links": [],
- "modified": "2026-10-02 13:12:04.393058",
+ "modified": "2026-10-05 23:14:57.365539",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Stock Scanner",

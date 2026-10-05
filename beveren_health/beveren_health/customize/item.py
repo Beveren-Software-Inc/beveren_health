@@ -19,26 +19,24 @@ def on_update(doc, method):
 		return
 
 	for barcode_row in doc.barcodes:
-		# Check if barcode has a value but no image
-		if barcode_row.barcode and not barcode_row.custom_image:
-			try:
-				# Determine barcode type (default to EAN13)
-				barcode_type = barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
+		if not barcode_row.barcode or barcode_row.custom_image:
+			continue
+		# Item-level barcodes without a batch are not EAN batch labels — skip image generation.
+		if not getattr(barcode_row, "custom_batch", None):
+			continue
 
-				# Generate barcode image
-				image_path = generate_barcode_image(barcode_row.barcode, barcode_type)
-
-				# Update the barcode row with the image
-				barcode_row.custom_image = image_path
-
-				frappe.msgprint(
-					f"Generated barcode image for {barcode_row.barcode}", indicator="green", alert=True
-				)
-			except Exception as e:
-				frappe.log_error(
-					title="Barcode Image Generation Error",
-					message=f"Error generating barcode image for {barcode_row.barcode}: {e!s}",
-				)
+		try:
+			barcode_type = barcode_row.barcode_type or DEFAULT_BARCODE_TYPE
+			image_path = generate_barcode_image(barcode_row.barcode, barcode_type)
+			barcode_row.custom_image = image_path
+			frappe.msgprint(
+				f"Generated barcode image for {barcode_row.barcode}", indicator="green", alert=True
+			)
+		except Exception as e:
+			frappe.log_error(
+				title="Barcode Image Generation Error",
+				message=f"Error generating barcode image for {barcode_row.barcode}: {e!s}",
+			)
 
 
 def _run_migrate_serials_to_dispensing_lots_for_item(item_code):
