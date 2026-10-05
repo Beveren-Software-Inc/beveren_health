@@ -503,6 +503,7 @@ fixtures = [
 					"Timesheet Detail-custom_patient_name",
 					"Timesheet Detail-custom_patient",
 					"Timesheet Detail-custom_duration",
+					"Stock Reconciliation Item-custom_stock_scanner",
 				],
 			]
 		],

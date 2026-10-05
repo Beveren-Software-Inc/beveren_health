@@ -1,4 +1,15 @@
 frappe.ui.form.on("Stock Reconciliation", {
+	setup(frm) {
+		// Keep Stock Scanner submitted when this reconciliation is cancelled.
+		frm.ignore_doctypes_on_cancel_all = frm.ignore_doctypes_on_cancel_all || [];
+		if (!frm.ignore_doctypes_on_cancel_all.includes("Serial and Batch Bundle")) {
+			frm.ignore_doctypes_on_cancel_all.push("Serial and Batch Bundle");
+		}
+		if (!frm.ignore_doctypes_on_cancel_all.includes("Stock Scanner")) {
+			frm.ignore_doctypes_on_cancel_all.push("Stock Scanner");
+		}
+	},
+
 	onload: function (frm) {
 		frm.current_focused_row = null;
 
@@ -38,6 +49,16 @@ frappe.ui.form.on("Stock Reconciliation", {
 				__("Actions")
 			);
 
+			if (frm.doc.docstatus === 0) {
+				frm.add_custom_button(
+					__("Update Reconciliation"),
+					function () {
+						show_update_reconciliation_dialog(frm);
+					},
+					__("Actions")
+				);
+			}
+
 			if (frm.doc.docstatus === 1) {
 				frm.add_custom_button(
 					__("Dispensing Lots"),
@@ -58,6 +79,50 @@ frappe.ui.form.on("Stock Reconciliation", {
 		});
 	},
 });
+
+function show_update_reconciliation_dialog(frm) {
+	const dialog = new frappe.ui.Dialog({
+		title: __("Update Reconciliation"),
+		fields: [
+			{
+				fieldtype: "HTML",
+				fieldname: "help",
+				options: __(
+					"Upload a spreadsheet with <b>item_code</b> and <b>Valuation rate</b> columns. Matching lines on this Stock Reconciliation will get the new valuation rate."
+				),
+			},
+			{
+				fieldname: "file",
+				fieldtype: "Attach",
+				label: __("Valuation Rate Spreadsheet"),
+				reqd: 1,
+			},
+		],
+		primary_action_label: __("Update"),
+		primary_action(values) {
+			frappe.call({
+				method: "beveren_health.beveren_health.customize.stock_reconciliation.update_valuation_rates_from_file",
+				args: {
+					name: frm.doc.name,
+					file_url: values.file,
+				},
+				freeze: true,
+				freeze_message: __("Updating valuation rates..."),
+				callback(r) {
+					const result = r.message || {};
+					frappe.msgprint({
+						title: __("Update Reconciliation"),
+						indicator: result.updated_count ? "green" : "orange",
+						message: result.message || __("Done."),
+					});
+					dialog.hide();
+					frm.reload_doc();
+				},
+			});
+		},
+	});
+	dialog.show();
+}
 
 function setup_row_click_tracking(frm) {
 	if (!frm.fields_dict["items"] || !frm.fields_dict["items"].grid) return;

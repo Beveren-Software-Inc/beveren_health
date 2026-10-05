@@ -669,6 +669,88 @@ function ss_add_item_line_from_barcode(frm, barcode, source_row) {
 	});
 }
 
+function ss_escape_html(value) {
+	return frappe.utils.escape_html(String(value == null ? "" : value));
+}
+
+function ss_show_validation_result(title, result, columns) {
+	const rows = (result && result.rows) || [];
+	if (!rows.length) {
+		frappe.msgprint({
+			title: title,
+			indicator: "green",
+			message: (result && result.message) || __("All lines look good."),
+		});
+		return;
+	}
+
+	const header = columns
+		.map(
+			(col) =>
+				`<th style="padding:6px 8px;text-align:left;">${ss_escape_html(col.label)}</th>`
+		)
+		.join("");
+	const body = rows
+		.map((row) => {
+			const cells = columns
+				.map(
+					(col) =>
+						`<td style="padding:6px 8px;">${ss_escape_html(row[col.field] ?? "")}</td>`
+				)
+				.join("");
+			return `<tr>${cells}</tr>`;
+		})
+		.join("");
+
+	frappe.msgprint({
+		title: title,
+		indicator: "orange",
+		message: `
+			<p>${ss_escape_html(result.message || "")}</p>
+			<div style="max-height:360px;overflow:auto;">
+				<table class="table table-bordered" style="margin:0;">
+					<thead><tr>${header}</tr></thead>
+					<tbody>${body}</tbody>
+				</table>
+			</div>
+		`,
+	});
+}
+
+function ss_run_validation(frm, method, title, columns) {
+	if (frm.is_new()) {
+		frappe.msgprint(__("Save the Stock Scanner first."));
+		return;
+	}
+
+	const run = () => {
+		frappe.call({
+			method: method,
+			args: { name: frm.doc.name },
+			freeze: true,
+			freeze_message: __("Checking lines..."),
+			callback(r) {
+				ss_show_validation_result(title, r.message || {}, columns);
+			},
+		});
+	};
+
+	if (frm.is_dirty()) {
+		frappe.confirm(
+			__("Save the document first so validation uses the latest lines?"),
+			() => {
+				frm.save().then(run);
+			},
+			() => {
+				run();
+			}
+		);
+		return;
+	}
+
+	run();
+}
+
 frappe.ui.form.on("Stock Scanner", {
 	scan_barcode(frm) {
 		const barcode = (frm.doc.scan_barcode || "").trim();
@@ -708,6 +790,62 @@ frappe.ui.form.on("Stock Scanner", {
 		});
 
 		setTimeout(() => ss_setup_row_click_tracking(frm), 300);
+
+		if (!frm.is_new()) {
+			frm.add_custom_button(
+				__("Validate Batch Items"),
+				() =>
+					ss_run_validation(
+						frm,
+						"beveren_health.beveren_health.customize.stock_scanner.validate_missing_batches",
+						__("Missing Batches"),
+						[
+							{ field: "idx", label: __("Row") },
+							{ field: "item_code", label: __("Item") },
+							{ field: "item_name", label: __("Item Name") },
+							{ field: "warehouse", label: __("Warehouse") },
+							{ field: "qty", label: __("Qty") },
+						]
+					),
+				__("Validate")
+			);
+			frm.add_custom_button(
+				__("Validate Dispensing Lots"),
+				() =>
+					ss_run_validation(
+						frm,
+						"beveren_health.beveren_health.customize.stock_scanner.validate_missing_dispensing_lots",
+						__("Missing Dispensing Lots"),
+						[
+							{ field: "idx", label: __("Row") },
+							{ field: "item_code", label: __("Item") },
+							{ field: "item_name", label: __("Item Name") },
+							{ field: "batch_no", label: __("Batch") },
+							{ field: "warehouse", label: __("Warehouse") },
+							{ field: "qty", label: __("Qty") },
+						]
+					),
+				__("Validate")
+			);
+			frm.add_custom_button(
+				__("Validate Batch Belongs to Item"),
+				() =>
+					ss_run_validation(
+						frm,
+						"beveren_health.beveren_health.customize.stock_scanner.validate_batch_item_mismatch",
+						__("Batch / Item Mismatch"),
+						[
+							{ field: "idx", label: __("Row") },
+							{ field: "item_code", label: __("Item") },
+							{ field: "item_name", label: __("Item Name") },
+							{ field: "batch_no", label: __("Batch") },
+							{ field: "batch_item", label: __("Batch Belongs To") },
+							{ field: "reason", label: __("Reason") },
+						]
+					),
+				__("Validate")
+			);
+		}
 
 		if (frm.doc.docstatus === 1) {
 			frm.add_custom_button(
