@@ -302,13 +302,13 @@
   {
    "fieldname": "add_new_batch",
    "fieldtype": "Button",
-   "label": "Add New Batch"
+   "label": "New Batch"
   }
  ],
  "grid_page_length": 50,
  "istable": 1,
  "links": [],
- "modified": "2026-10-05 23:12:52.100254",
+ "modified": "2026-10-07 00:47:11.699931",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Stock Scanner Item",

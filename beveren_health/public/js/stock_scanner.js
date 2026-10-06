@@ -90,10 +90,154 @@ function ss_setup_row_click_tracking(frm) {
 		return;
 	}
 	wrapper.off("click.ss_scanner", ".grid-row");
-	wrapper.on("click.ss_scanner", ".grid-row", function () {
+	wrapper.off("focusin.ss_scanner", ".grid-row");
+
+	const on_row_focus = function () {
 		const idx = $(this).attr("data-idx");
-		if (idx) {
-			frm.current_focused_row = parseInt(idx, 10) - 1;
+		if (!idx) {
+			return;
+		}
+		const new_idx = parseInt(idx, 10) - 1;
+		ss_leave_row_if_needed(frm, new_idx);
+	};
+
+	wrapper.on("click.ss_scanner", ".grid-row", on_row_focus);
+	wrapper.on("focusin.ss_scanner", ".grid-row", on_row_focus);
+}
+
+function ss_get_item_flags(frm, item_code) {
+	frm._ss_item_flags = frm._ss_item_flags || {};
+	if (frm._ss_item_flags[item_code]) {
+		return Promise.resolve(frm._ss_item_flags[item_code]);
+	}
+	return frappe.db
+		.get_value("Item", item_code, ["has_batch_no", "custom_has_dispense_lot"])
+		.then((r) => {
+			const flags = {
+				has_batch_no: cint(r.message && r.message.has_batch_no),
+				has_dispense_lot: cint(r.message && r.message.custom_has_dispense_lot),
+			};
+			frm._ss_item_flags[item_code] = flags;
+			return flags;
+		});
+}
+
+function ss_validate_row(frm, row) {
+	if (!row || !row.item_code || frm.doc.docstatus === 1) {
+		return Promise.resolve([]);
+	}
+
+	const issues = [];
+	return ss_get_item_flags(frm, row.item_code).then((flags) => {
+		const checks = [];
+
+		if (flags.has_batch_no && !(row.batch_no || "").trim()) {
+			issues.push(__("Item needs a Batch No."));
+		}
+
+		if (flags.has_dispense_lot && !ss_count_lots(row.serial_no)) {
+			issues.push(__("Item needs a Dispensing Lot."));
+		}
+
+		if ((row.batch_no || "").trim()) {
+			checks.push(
+				frappe.db.get_value("Batch", row.batch_no, "item").then((r) => {
+					const batch_item = r.message && r.message.item;
+					if (!batch_item) {
+						issues.push(__("Batch {0} was not found.", [row.batch_no]));
+					} else if (batch_item !== row.item_code) {
+						issues.push(
+							__("Batch {0} belongs to Item {1}, not {2}.", [
+								row.batch_no,
+								batch_item,
+								row.item_code,
+							])
+						);
+					}
+				})
+			);
+		}
+
+		return Promise.all(checks).then(() => issues);
+	});
+}
+
+function ss_show_row_issues(frm, row_idx, issues) {
+	const row = frm.doc.items[row_idx];
+	if (!row || !issues.length) {
+		return;
+	}
+	ss_highlight_row(frm, row_idx);
+	ss_scroll_to_row(frm, row_idx);
+	frappe.msgprint({
+		title: __("Row {0} needs attention", [row.idx]),
+		indicator: "orange",
+		message: `
+			<p><b>${ss_escape_html(row.item_code || "")}</b>
+			${row.item_name ? " — " + ss_escape_html(row.item_name) : ""}</p>
+			<ul style="margin:0.5rem 0 0;padding-left:1.25rem;">
+				${issues.map((msg) => `<li>${ss_escape_html(msg)}</li>`).join("")}
+			</ul>
+		`,
+	});
+}
+
+function ss_leave_row_if_needed(frm, new_idx) {
+	const prev_idx = frm.current_focused_row;
+	if (prev_idx === null || prev_idx === undefined || prev_idx === new_idx) {
+		frm.current_focused_row = new_idx;
+		return;
+	}
+
+	const prev_row = frm.doc.items[prev_idx];
+	if (!prev_row || !prev_row.item_code) {
+		frm.current_focused_row = new_idx;
+		return;
+	}
+
+	// Avoid re-validating the same leave while a dialog is open.
+	if (frm._ss_validating_leave) {
+		return;
+	}
+	frm._ss_validating_leave = true;
+
+	ss_validate_row(frm, prev_row)
+		.then((issues) => {
+			frm._ss_validating_leave = false;
+			if (issues.length) {
+				ss_show_row_issues(frm, prev_idx, issues);
+				frm.current_focused_row = prev_idx;
+				return;
+			}
+			frm.current_focused_row = new_idx;
+			ss_highlight_row(frm, new_idx);
+		})
+		.catch(() => {
+			frm._ss_validating_leave = false;
+			frm.current_focused_row = new_idx;
+		});
+}
+
+function ss_validate_current_row_fields(frm, cdt, cdn) {
+	if (frm.doc.docstatus === 1) {
+		return;
+	}
+	const row = locals[cdt][cdn];
+	if (!row || !row.item_code) {
+		return;
+	}
+	const row_idx = (frm.doc.items || []).findIndex((r) => r.name === cdn);
+	ss_validate_row(frm, row).then((issues) => {
+		if (!issues.length) {
+			return;
+		}
+		// Soft alert while editing fields — full block happens when leaving the row.
+		frappe.show_alert({
+			message: __("Row {0}: {1}", [row.idx, issues[0]]),
+			indicator: "orange",
+		});
+		if (row_idx >= 0) {
+			ss_highlight_row(frm, row_idx);
 		}
 	});
 }
@@ -772,6 +916,8 @@ frappe.ui.form.on("Stock Scanner", {
 	onload(frm) {
 		frm.current_focused_row = null;
 		frm.ss_scans_since_save = 0;
+		frm._ss_item_flags = {};
+		frm._ss_validating_leave = false;
 		ss_inject_highlight_style();
 		setTimeout(() => ss_setup_row_click_tracking(frm), 500);
 	},
@@ -875,6 +1021,9 @@ frappe.ui.form.on("Stock Scanner Item", {
 			}
 			return;
 		}
+		if (frm._ss_item_flags) {
+			delete frm._ss_item_flags[row.item_code];
+		}
 		if (row.batch_no) {
 			frappe.db.get_value("Batch", row.batch_no, "item", (r) => {
 				if (r && r.item && r.item !== row.item_code) {
@@ -887,6 +1036,11 @@ frappe.ui.form.on("Stock Scanner Item", {
 				frappe.model.set_value(cdt, cdn, "use_serial_batch_fields", 1);
 			}
 		});
+		ss_validate_current_row_fields(frm, cdt, cdn);
+	},
+
+	batch_no(frm, cdt, cdn) {
+		ss_validate_current_row_fields(frm, cdt, cdn);
 	},
 
 	scan_barcode(frm, cdt, cdn) {
@@ -927,6 +1081,7 @@ frappe.ui.form.on("Stock Scanner Item", {
 
 	serial_no(frm, cdt, cdn) {
 		ss_sync_qty_from_lots(frm, cdt, cdn);
+		ss_validate_current_row_fields(frm, cdt, cdn);
 	},
 
 	add_new_batch(frm, cdt, cdn) {
