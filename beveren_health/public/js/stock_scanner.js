@@ -103,6 +103,15 @@ function ss_setup_row_click_tracking(frm) {
 
 	wrapper.on("click.ss_scanner", ".grid-row", on_row_focus);
 	wrapper.on("focusin.ss_scanner", ".grid-row", on_row_focus);
+
+	// Scanners send Enter after the code. That must not activate New Batch.
+	wrapper.off("keydown.ss_nobatch", "[data-fieldname='add_new_batch']");
+	wrapper.on("keydown.ss_nobatch", "[data-fieldname='add_new_batch']", function (e) {
+		if (e.key === "Enter" || e.key === " " || e.which === 13) {
+			e.preventDefault();
+			e.stopPropagation();
+		}
+	});
 }
 
 function ss_get_item_flags(frm, item_code) {
@@ -936,6 +945,12 @@ frappe.ui.form.on("Stock Scanner", {
 		});
 
 		setTimeout(() => ss_setup_row_click_tracking(frm), 300);
+
+		// Batch No is filled by the scanner. Do not offer "Create a new Batch" on that link.
+		const batch_df = frappe.meta.get_docfield("Stock Scanner Item", "batch_no");
+		if (batch_df) {
+			batch_df.only_select = 1;
+		}
 
 		if (!frm.is_new()) {
 			frm.add_custom_button(
