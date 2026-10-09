@@ -39,7 +39,7 @@ Technical map of what `beveren_health` wires into Frappe / ERPNext / HRMS / Heal
 | Stock Entry | validate | `customize.warehouse_cost_center.set_cost_center_from_stock_entry_warehouse` |
 | Stock Entry | before_submit | `customize.dispensing_lot.validate_stock_entry_dispensing_lots` |
 | Stock Entry | on_submit / on_cancel | `customize.serial_no.update_serial_gtin`, `customize.dispensing_lot.create_dispensing_lots_on_submit`, `...reverse_stock_document_dispensing_lots` |
-| Stock Reconciliation | validate / before_submit / on_submit / on_cancel / on_trash | cost center, lot validation, lot creation + GTIN, scanner marking/release, lot reversal |
+| Stock Reconciliation | validate / before_submit / on_submit / on_cancel / on_trash | cost center, lot validation, lot creation + GTIN, lots of a zeroed batch counted down, scanner marking/release, lot reversal / reactivation |
 | Stock Scanner | before_submit | `customize.dispensing_lot.validate_stock_scanner_dispensing_lots` |
 | Sales Invoice | validate | `customize.sales_invoice.validate_return_restrictions`, `customize.patient_pricing.set_price_list_for_patient` |
 | Sales Invoice | before_submit | `customize.sales_invoice.validate_dispensing_lots`, `customize.dispensing_lot.fill_return_lots_on_submit` |
@@ -72,7 +72,7 @@ scheduler_events = {
 | `auto_save_scan.js` | global | `beveren_health.auto_save_scan.*` — interval, row patching, save after *N* scans |
 | `scanner.js` | global | Overrides `custom.barcode_scanner.handle_scan` (item + batch + qty into the item grid) |
 | `stock_entry.js` | Stock Entry | Header + row scanner, batch label print, update batch expiry dates |
-| `stock_reconciliation.js` | Stock Reconciliation | Row scanner, batch label print, dispensing-lots dialog, lot-quantity correction |
+| `stock_reconciliation.js` | Stock Reconciliation | Row scanner, batch label print, dispensing-lots dialog, lot-quantity correction, **Zero Batch from Chosen Warehouse** (draft) |
 | `stock_scanner.js` | Stock Scanner | Scan handler, **Create Stock Reconciliation** dialog, view action |
 | `purchase_receipt.js` | Purchase Receipt | Row scanner, batch label print and label review table |
 | `sales_invoice.js` | Sales Invoice | Lot picker filters, mandatory lot on stock-updating lines, return lot auto-fill |
@@ -112,6 +112,10 @@ scheduler_events = {
 | `customize.dispensing_lot.preview_dispensing_lot_qty_corrections(source_doctype, source_document)` | Preview the lot-quantity correction |
 | `customize.dispensing_lot.correct_dispensing_lot_quantities(source_doctype, source_document)` | Apply the lot-quantity correction |
 | `customize.salary_slip.get_lwp_absents(employee, start_date, end_date)` | LWP days + absent days for a payslip |
+| `customize.stock_reconciliation.update_valuation_rates_from_file(name, file_url)` | Valuation rates from a spreadsheet onto a draft reconciliation |
+| `customize.stock_reconciliation.get_unreconciled_batches(name)` | Preview of the batch balances a reconciliation does not cover |
+| `customize.stock_reconciliation.create_unreconciled_batch_reconciliation(name, posting_date, posting_time)` | Draft reconciliation zeroing those batches |
+| `customize.stock_reconciliation.get_warehouse_zeroing_lines(warehouse, company, purpose)` | Every batch balance of one warehouse as zero-quantity lines (Zero Batch from Chosen Warehouse) |
 | `customize.patient_pricing.get_price_list_for_patient(patient)` | OP / IP price list for the POS |
 | `customize.overtime_allowance.get_patient_visit_allowance(overtime_slip)` | Recalculate and return the patient-visit allowance |
 | `customize.item.migrate_serials_to_dispensing_lots_for_item(item_code)` | Background: lots from serials for one item |

@@ -512,13 +512,160 @@ def validate_stock_entry_dispensing_lots(doc, method=None):
 			_validate_lot_eligible_for_transfer(lot, serial)
 
 
+# ─── Zeroed batches ──────────────────────────────────────────────────────────────
+#
+# A Stock Reconciliation line carries the *counted* balance of a batch, so a line with
+# quantity 0 says the batch holds nothing in that warehouse once the document is
+# submitted.  Its dispensing lots would otherwise stay dispensable, so they are counted
+# down with an Out row and become Inactive — serial, initial and remaining quantity stay
+# on the record, so receiving the pack again (Purchase Receipt / Stock Entry / Stock
+# Reconciliation with the same serial) reactivates it.  Cancelling the reconciliation
+# posts the quantity back.
+
+
+def _stock_row_zeroes_batch(doc, row):
+	"""True for a Stock Reconciliation line that counts a batch down to zero."""
+	if doc.doctype != "Stock Reconciliation":
+		return False
+	return not flt(row.get("qty"))
+
+
+def _lot_in_row_scope(doc, row, lot, config):
+	"""Whether a lot belongs to the item, batch and warehouse a line counts.
+
+	A lot whose stock sits in another warehouse is never in scope: this reconciliation
+	only counts the warehouse it was made for.
+	"""
+	warehouse = get_warehouse_for_row(doc, row, config)
+
+	if row.item_code and lot.item and lot.item != row.item_code:
+		return False
+	if row.batch_no and lot.batch_no and lot.batch_no != row.batch_no:
+		return False
+	if warehouse and lot.warehouse and lot.warehouse != warehouse:
+		return False
+	return True
+
+
+def _lots_to_zero_for_row(doc, row, config):
+	"""Lots a zeroing line has to count down, from the line and from the batch balance.
+
+	The lots named on the line come first — that is what the Zero Unreconciled Batches
+	preview lists.  Lots still holding stock for the same item and batch in the same
+	warehouse are added, so a hand-written zero line cannot leave a pack dispensable.
+	"""
+	names = resolve_dispensing_lot_names_from_field(row.get(DISPENSING_LOT_FIELD))
+
+	if row.item_code and row.batch_no:
+		for name in frappe.get_all(
+			"Dispensing Lot",
+			filters={
+				"item": row.item_code,
+				"batch_no": row.batch_no,
+				"remaining_qty": (">", 0),
+			},
+			pluck="name",
+		):
+			if name not in names:
+				names.append(name)
+
+	lots = []
+	for lot in _get_lot_docs(names):
+		if flt(lot.remaining_qty) <= 0:
+			continue
+		if not _lot_in_row_scope(doc, row, lot, config):
+			continue
+		lots.append(lot)
+	return lots
+
+
+def _zero_dispensing_lots_for_batch(doc, row, config, posting_date):
+	"""Count every lot of a zeroed batch down to zero. Returns the lot names."""
+	zeroed = []
+	for lot in _lots_to_zero_for_row(doc, row, config):
+		if _lot_has_reference_transaction(lot, doc.doctype, doc.name, "Out"):
+			continue
+
+		_append_lot_transaction(
+			lot,
+			transaction_type="Out",
+			qty=flt(lot.remaining_qty),
+			uom=lot.uom,
+			reference_doctype=doc.doctype,
+			reference_name=doc.name,
+			posting_date=posting_date,
+			remarks=_("Zeroed by {0} {1}").format(doc.doctype, doc.name),
+		)
+		zeroed.append(lot.name)
+
+	return zeroed
+
+
+def _reactivate_dispensing_lots_zeroed_by(doc, config, posting_date):
+	"""Put back the packs a zeroing reconciliation counted down when it is cancelled."""
+	if doc.doctype != "Stock Reconciliation":
+		return []
+
+	names = frappe.get_all(
+		"Dispensing Lot Transaction",
+		filters={
+			"reference_doctype": doc.doctype,
+			"reference_name": doc.name,
+			"transaction_type": "Out",
+		},
+		pluck="parent",
+	)
+	if not names:
+		return []
+
+	zeroing_rows = [row for row in doc.get(config["items_field"]) or [] if _stock_row_zeroes_batch(doc, row)]
+
+	reactivated = []
+	for lot in _get_lot_docs(names):
+		if _lot_has_reference_transaction(lot, doc.doctype, doc.name, "In"):
+			continue
+		if not any(_lot_in_row_scope(doc, row, lot, config) for row in zeroing_rows):
+			continue
+
+		# Mirror what the zeroing posted: re-reading the lot now would give a
+		# different quantity, because the Out already moved remaining_qty.
+		uom, qty = _recorded_lot_transaction(lot, doc.doctype, doc.name, "Out")
+		if qty <= 0:
+			continue
+
+		_append_lot_transaction(
+			lot,
+			transaction_type="In",
+			qty=qty,
+			uom=uom or lot.uom,
+			reference_doctype=doc.doctype,
+			reference_name=doc.name,
+			posting_date=posting_date,
+			remarks=_("Reopened from {0} {1}").format(doc.doctype, doc.name),
+		)
+		reactivated.append(lot.name)
+
+	return reactivated
+
+
 def create_dispensing_lots_on_submit(doc, method=None):
-	"""Create Dispensing Lot records from scanned serials on stock document submit."""
+	"""Create Dispensing Lot records from scanned serials on stock document submit.
+
+	A Stock Reconciliation line that counts a batch down to zero does the opposite: the
+	lots of that batch are counted down too and go Inactive.
+	"""
 	config = STOCK_DOC_CONFIG.get(doc.doctype)
 	if not config:
 		return
 
+	posting_date = doc.get("posting_date") or frappe.utils.today()
+	zeroed = []
+
 	for row in doc.get(config["items_field"]) or []:
+		if _stock_row_zeroes_batch(doc, row):
+			zeroed.extend(_zero_dispensing_lots_for_batch(doc, row, config, posting_date))
+			continue
+
 		serials = _serials_from_stock_row(row)
 		if not serials or not row.item_code or not row.batch_no:
 			continue
@@ -535,7 +682,6 @@ def create_dispensing_lots_on_submit(doc, method=None):
 
 		gtin = row.get("custom_gstin") or frappe.db.get_value("Item", row.item_code, "custom_gtin_number")
 
-		posting_date = doc.get("posting_date") or frappe.utils.today()
 		row_stock_qty = flt(row.get("qty")) or len(serials)
 		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
 
@@ -553,6 +699,16 @@ def create_dispensing_lots_on_submit(doc, method=None):
 				posting_date=posting_date,
 				row_idx=row.idx,
 			)
+
+	if zeroed:
+		frappe.msgprint(
+			_(
+				"{0} dispensing lot(s) were set to Inactive: their batch holds no stock "
+				"on this Stock Reconciliation."
+			).format(len(zeroed)),
+			indicator="orange",
+			alert=True,
+		)
 
 
 def _validate_stock_row_batch_item(row):
@@ -1196,6 +1352,9 @@ def reverse_stock_document_dispensing_lots(doc, method=None):
 	On cancel of Purchase Receipt / Stock Entry / Stock Reconciliation,
 	post Out for remaining qty so the lot goes to zero and status Inactive.
 
+	A reconciliation that counted a batch down to zero is the other way round: the lots
+	it zeroed are put back (In) and become dispensable again.
+
 	Material Transfer cancel only moves warehouse back to the source (no Out/In).
 	"""
 	if _is_material_transfer_stock_entry(doc):
@@ -1208,7 +1367,14 @@ def reverse_stock_document_dispensing_lots(doc, method=None):
 
 	posting_date = doc.get("posting_date") or frappe.utils.today()
 
+	reactivated = _reactivate_dispensing_lots_zeroed_by(doc, config, posting_date)
+
 	for row in doc.get(config["items_field"]) or []:
+		if _stock_row_zeroes_batch(doc, row):
+			# A zeroing line introduced no lot: cancelling it puts the lots it counted
+			# down back, which the loop above already did.
+			continue
+
 		serials = _serials_from_stock_row(row)
 		if not serials:
 			continue
@@ -1239,6 +1405,16 @@ def reverse_stock_document_dispensing_lots(doc, method=None):
 				posting_date=posting_date,
 				remarks=_("Cancelled {0}").format(doc.name),
 			)
+
+	if reactivated:
+		frappe.msgprint(
+			_(
+				"{0} dispensing lot(s) were put back in stock: this Stock Reconciliation "
+				"no longer counts their batch down to zero."
+			).format(len(reactivated)),
+			indicator="orange",
+			alert=True,
+		)
 
 
 def resolve_dispensing_lot_names_from_field(raw_value):

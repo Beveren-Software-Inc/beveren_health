@@ -40,6 +40,9 @@ frappe.ui.form.on("Stock Reconciliation", {
 			setup_row_click_tracking(frm);
 		}, 300);
 
+		// Also available on a brand new form, so it stays outside the saved-document block.
+		toggle_zero_warehouse_button(frm);
+
 		if (!frm.is_new()) {
 			frm.add_custom_button(
 				__("Batch Label Print"),
@@ -68,6 +71,14 @@ frappe.ui.form.on("Stock Reconciliation", {
 					__("Actions")
 				);
 
+				frm.add_custom_button(
+					__("Zero Unreconciled Batches"),
+					function () {
+						show_unreconciled_batches_dialog(frm);
+					},
+					__("Actions")
+				);
+
 				setup_dispensing_lot_qty_correction_button(frm);
 			}
 		}
@@ -77,6 +88,9 @@ frappe.ui.form.on("Stock Reconciliation", {
 		beveren_health.warehouse_cost_center.set_from_warehouse(frm, frm.doc.set_warehouse, {
 			update_items: false,
 		});
+
+		// The button only exists once a Default Warehouse is set.
+		toggle_zero_warehouse_button(frm);
 	},
 });
 
@@ -1065,6 +1079,434 @@ function show_dispensing_lots_for_reconciliation(frm) {
 			});
 		},
 	});
+}
+
+// ─── Zero un-reconciled batches ────────────────────────────────────────────────
+
+function show_unreconciled_batches_dialog(frm) {
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.stock_reconciliation.get_unreconciled_batches",
+		args: { name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Checking batch balances..."),
+		callback(r) {
+			const data = r.message || {};
+			const lines = data.lines || [];
+
+			if (!data.total_lines) {
+				frappe.msgprint({
+					title: __("Nothing to zero"),
+					indicator: "green",
+					message: __(
+						"Every batch still holding stock in this document's warehouses is already on this Stock Reconciliation."
+					),
+				});
+				return;
+			}
+
+			const dialog = new frappe.ui.Dialog({
+				title: __("Zero Unreconciled Batches"),
+				size: "extra-large",
+				fields: [
+					{
+						fieldtype: "HTML",
+						fieldname: "summary",
+						options: build_unreconciled_summary_html(data),
+					},
+					{
+						fieldtype: "Date",
+						fieldname: "posting_date",
+						label: __("Posting Date"),
+						default: frappe.datetime.get_today(),
+						reqd: 1,
+					},
+					{
+						fieldtype: "HTML",
+						fieldname: "lines",
+						options: build_unreconciled_lines_html(data),
+					},
+				],
+				primary_action_label: __("Create Draft Reconciliation"),
+				primary_action(values) {
+					dialog.hide();
+					frappe.call({
+						method: "beveren_health.beveren_health.customize.stock_reconciliation.create_unreconciled_batch_reconciliation",
+						args: {
+							name: frm.doc.name,
+							posting_date: values.posting_date,
+						},
+						freeze: true,
+						freeze_message: __("Creating Stock Reconciliation..."),
+						callback(res) {
+							if (!res.message) return;
+							frappe.show_alert({
+								message: __("Draft {0} created", [res.message]),
+								indicator: "green",
+							});
+							frappe.set_route("Form", "Stock Reconciliation", res.message);
+						},
+					});
+				},
+			});
+
+			dialog.show();
+		},
+	});
+}
+
+// `format_currency` is a window global provided by the desk bundle (number_format.js),
+// not `frappe.utils.format_currency`. Guard it so a missing/renamed global degrades to a
+// plain number instead of throwing and leaving the dialog unrendered.
+function format_unreconciled_value(value, currency) {
+	const amount = flt(value, 2);
+	if (currency && typeof format_currency === "function") {
+		return format_currency(amount, currency);
+	}
+	return amount;
+}
+
+function build_unreconciled_summary_html(data) {
+	const warnings = [];
+	if (data.warning_lines) {
+		warnings.push(
+			__(
+				"{0} line(s) have no unused dispensing lot for their batch. Add a lot to those lines before submitting, otherwise submit will be blocked.",
+				[data.warning_lines]
+			)
+		);
+	}
+
+	return `
+		<p>${__(
+			"These batch/warehouse combinations are not on this Stock Reconciliation. A draft Stock Reconciliation will be created with one zero-quantity line per combination."
+		)}</p>
+		<p>${__(
+			"Submitting that draft counts those batches down to zero and sets their dispensing lots to Inactive; cancelling it puts the lots back in stock."
+		)}</p>
+		${build_batch_summary_table_html(data)}
+		${build_batch_summary_warning_html(warnings)}
+	`;
+}
+
+function build_batch_summary_table_html(data) {
+	const rows = [
+		`<tr><td>${__(
+			"Warehouse(s)"
+		)}</td><td style="text-align:right;"><b>${frappe.utils.escape_html(
+			(data.warehouses || []).join(", ")
+		)}</b></td></tr>`,
+		`<tr><td>${__("Lines to zero")}</td><td style="text-align:right;"><b>${
+			data.total_lines
+		}</b></td></tr>`,
+		`<tr><td>${__("Total quantity on hand")}</td><td style="text-align:right;"><b>${flt(
+			data.total_qty
+		)}</b></td></tr>`,
+		`<tr><td>${__(
+			"Value to write off"
+		)}</td><td style="text-align:right;"><b>${format_unreconciled_value(
+			data.total_value,
+			data.currency
+		)}</b></td></tr>`,
+	];
+
+	if (data.lot_lines) {
+		rows.push(
+			`<tr><td>${__("Lines with dispensing lots")}</td><td style="text-align:right;"><b>${
+				data.lot_lines
+			}</b> ${__("({0} lot(s) will be set to Inactive)", [data.lot_count])}</td></tr>`
+		);
+	}
+
+	return `
+		<table class="table table-bordered" style="font-size:12px; margin-bottom:8px;">
+			<tbody>${rows.join("")}</tbody>
+		</table>
+	`;
+}
+
+function build_batch_summary_warning_html(messages) {
+	return messages
+		.filter(Boolean)
+		.map((message) => `<p class="text-danger" style="margin:8px 0 0;">${message}</p>`)
+		.join("");
+}
+
+function build_unreconciled_lines_html(data) {
+	const lines = data.lines || [];
+	const rows = lines
+		.map((line) => {
+			const item = line.item_name
+				? `${frappe.utils.escape_html(
+						line.item_name
+				  )}<br><span class="text-muted">${frappe.utils.escape_html(
+						line.item_code
+				  )}</span>`
+				: frappe.utils.escape_html(line.item_code);
+
+			const lot_cell = line.needs_dispensing_lot
+				? line.lot_count
+					? `${line.lot_count}`
+					: `<span class="text-danger">${__("None found")}</span>`
+				: `<span class="text-muted">—</span>`;
+
+			return `
+				<tr>
+					<td style="padding:4px 8px;">${frappe.utils.escape_html(line.warehouse || "")}</td>
+					<td style="padding:4px 8px;">${item}</td>
+					<td style="padding:4px 8px;">${frappe.utils.escape_html(line.batch_no || "")}</td>
+					<td style="padding:4px 8px; text-align:right;">${flt(line.qty)}</td>
+					<td style="padding:4px 8px; text-align:right;">${flt(line.valuation_rate)}</td>
+					<td style="padding:4px 8px; text-align:right;">${format_unreconciled_value(
+						line.value,
+						data.currency
+					)}</td>
+					<td style="padding:4px 8px; text-align:right;">${lot_cell}</td>
+				</tr>
+			`;
+		})
+		.join("");
+
+	const footer = data.truncated
+		? `<p class="text-muted" style="margin-top:8px;">${__(
+				"Showing the first {0} of {1} line(s).",
+				[lines.length, data.total_lines]
+		  )}</p>`
+		: "";
+
+	return `
+		<div style="overflow-x:auto; max-height:300px; overflow-y:auto;">
+			<table class="table table-bordered" style="margin:0; font-size:12px;">
+				<thead>
+					<tr>
+						<th>${__("Warehouse")}</th>
+						<th>${__("Item")}</th>
+						<th>${__("Batch")}</th>
+						<th style="text-align:right;">${__("Qty on hand")}</th>
+						<th style="text-align:right;">${__("Valuation Rate")}</th>
+						<th style="text-align:right;">${__("Value")}</th>
+						<th style="text-align:right;">${__("Lots")}</th>
+					</tr>
+				</thead>
+				<tbody>${rows}</tbody>
+			</table>
+		</div>
+		${footer}
+	`;
+}
+
+// ─── Zero every batch of the chosen warehouse ───────────────────────────────────
+//
+// On a draft reconciliation the Default Warehouse picks the location; this button fills
+// the form with one line per batch holding stock in it — quantity 0, the valuation rate
+// the ledger holds and the dispensing lots of the batch — so a whole warehouse can be
+// written off and submitted without scanning. The button writes nothing: the lines land
+// in the grid for review, and submitting the reconciliation counts the batches down to
+// zero and sets their dispensing lots to Inactive (cancelling puts them back in stock).
+
+const ZERO_WAREHOUSE_REPLACE = "Replace existing lines";
+const ZERO_WAREHOUSE_APPEND = "Add to existing lines";
+const ZERO_WAREHOUSE_LARGE_LINE_LIMIT = 2000;
+
+function zero_warehouse_button_label() {
+	return __("Zero Batch from Chosen Warehouse");
+}
+
+function toggle_zero_warehouse_button(frm) {
+	const group = __("Actions");
+	frm.remove_custom_button(zero_warehouse_button_label(), group);
+
+	if (frm.doc.docstatus === 0 && frm.doc.set_warehouse) {
+		frm.add_custom_button(
+			zero_warehouse_button_label(),
+			function () {
+				show_zero_warehouse_dialog(frm);
+			},
+			group
+		);
+	}
+}
+
+function show_zero_warehouse_dialog(frm) {
+	if (!frm.doc.set_warehouse) {
+		frappe.msgprint(__("Set the Default Warehouse on this Stock Reconciliation first."));
+		return;
+	}
+
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.stock_reconciliation.get_warehouse_zeroing_lines",
+		args: {
+			warehouse: frm.doc.set_warehouse,
+			company: frm.doc.company,
+			purpose: frm.doc.purpose,
+		},
+		freeze: true,
+		freeze_message: __("Reading batch balances of {0}...", [frm.doc.set_warehouse]),
+		callback(r) {
+			const data = r.message || {};
+
+			if (!data.total_lines) {
+				frappe.msgprint({
+					title: __("Nothing to zero"),
+					indicator: "green",
+					message: __(
+						"No batch holds stock in {0}. Every batch there is already counted to zero.",
+						[frappe.utils.escape_html(data.warehouse || frm.doc.set_warehouse)]
+					),
+				});
+				return;
+			}
+
+			const existing = (frm.doc.items || []).length;
+			const fields = [
+				{
+					fieldtype: "HTML",
+					fieldname: "summary",
+					options: build_zero_warehouse_summary_html(data, existing),
+				},
+			];
+
+			if (existing) {
+				fields.push({
+					fieldtype: "Select",
+					fieldname: "mode",
+					label: __("Existing lines"),
+					options: [__(ZERO_WAREHOUSE_REPLACE), __(ZERO_WAREHOUSE_APPEND)],
+					default: __(ZERO_WAREHOUSE_REPLACE),
+					reqd: 1,
+				});
+			}
+
+			fields.push({
+				fieldtype: "HTML",
+				fieldname: "lines",
+				options: build_unreconciled_lines_html(data),
+			});
+
+			const dialog = new frappe.ui.Dialog({
+				title: __("Zero Batch from Chosen Warehouse"),
+				size: "extra-large",
+				fields: fields,
+				primary_action_label: __("Fill the lines"),
+				primary_action(values) {
+					dialog.hide();
+					apply_zero_warehouse_lines(frm, data, values);
+				},
+			});
+
+			dialog.show();
+		},
+	});
+}
+
+function apply_zero_warehouse_lines(frm, data, values) {
+	const replacing = (values && values.mode) !== __(ZERO_WAREHOUSE_APPEND);
+	const grid_rows = data.grid_rows || [];
+	const has_lot_field = frappe.meta.has_field(
+		"Stock Reconciliation Item",
+		"custom_dispensing_lot"
+	);
+
+	const existing_keys = new Set();
+	if (!replacing) {
+		(frm.doc.items || []).forEach((row) => {
+			existing_keys.add(zero_warehouse_line_key(row));
+		});
+	} else {
+		frm.clear_table("items");
+	}
+
+	let added = 0;
+	let skipped = 0;
+
+	grid_rows.forEach((row) => {
+		if (existing_keys.has(zero_warehouse_line_key(row))) {
+			skipped += 1;
+			return;
+		}
+
+		const line = Object.assign({}, row);
+		if (!has_lot_field) {
+			delete line.custom_dispensing_lot;
+		}
+
+		frm.add_child("items", line);
+		added += 1;
+	});
+
+	const defaults = data.defaults || {};
+	if (defaults.expense_account && !frm.doc.expense_account) {
+		frm.set_value("expense_account", defaults.expense_account);
+	}
+	if (defaults.cost_center && !frm.doc.cost_center) {
+		frm.set_value("cost_center", defaults.cost_center);
+	}
+	if (!frm.doc.posting_date) {
+		frm.set_value("posting_date", frappe.datetime.get_today());
+	}
+	if (!frm.doc.posting_time) {
+		frm.set_value("posting_time", frappe.datetime.now_time());
+	}
+
+	frm.refresh_field("items");
+	frm.dirty();
+
+	frappe.show_alert({
+		message: skipped
+			? __("{0} line(s) added, {1} line(s) were already on the form.", [added, skipped])
+			: __("{0} zero-quantity line(s) added. Review them and submit when ready.", [added]),
+		indicator: "green",
+	});
+}
+
+function zero_warehouse_line_key(row) {
+	return [row.item_code || "", row.batch_no || "", row.warehouse || ""].join("::");
+}
+
+function build_zero_warehouse_summary_html(data, existing_lines) {
+	const warnings = [];
+
+	if (existing_lines) {
+		warnings.push(
+			__(
+				"This form already has {0} line(s). Replacing them keeps only the batch lines below.",
+				[existing_lines]
+			)
+		);
+	}
+	if (data.warning_lines) {
+		warnings.push(
+			__(
+				"{0} line(s) have no unused dispensing lot for their batch. Add a lot to those lines before submitting, otherwise submit will be blocked.",
+				[data.warning_lines]
+			)
+		);
+	}
+	if (data.defaults && data.defaults.perpetual_inventory && !data.defaults.expense_account) {
+		warnings.push(
+			__(
+				"No Difference Account could be resolved for this company. Set a Stock Adjustment Account on the Company before submitting."
+			)
+		);
+	}
+	if (data.total_lines > ZERO_WAREHOUSE_LARGE_LINE_LIMIT) {
+		warnings.push(
+			__("This warehouse is large: {0} lines will be added and the form may become slow.", [
+				data.total_lines,
+			])
+		);
+	}
+
+	return `
+		<p>${__(
+			"Every batch holding stock in {0} is added to this reconciliation with quantity <b>0</b>, so submitting it counts the whole warehouse down to zero.",
+			[frappe.utils.escape_html(data.warehouse || "")]
+		)}</p>
+		<p>${__(
+			"The valuation rate comes from the ledger and the Current Qty column shows what is being written off. Nothing is saved by this button — review the lines and submit when ready. Submitting sets the dispensing lots of those batches to Inactive; cancelling puts them back in stock."
+		)}</p>
+		${build_batch_summary_table_html(data)}
+		${build_batch_summary_warning_html(warnings)}
+	`;
 }
 
 // Batch printing

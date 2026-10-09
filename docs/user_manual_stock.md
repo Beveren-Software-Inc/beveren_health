@@ -226,6 +226,8 @@ dispensing lots.
 | Selling a **full pack** (stock UOM) after units were sold from it | Blocked — only unit (dispensing UOM) sales are allowed for the remainder |
 | Several lots on one invoice line | Supported: the line quantity is shared out across the lots in order, each filled up to its remaining quantity |
 | Cancelling a Purchase Receipt / Stock Entry / Stock Reconciliation | The lots that document introduced are posted **Out** for their remaining quantity, so the lot goes to zero and becomes `Inactive` |
+| A Stock Reconciliation line counting a batch **down to zero** | Every dispensing lot of that item + batch in the document's warehouse is posted **Out** for its remaining quantity, so the lot becomes `Inactive` and can no longer be scanned, transferred or sold. **Cancelling** the reconciliation posts the same quantity **back** (`In`) and the lots are dispensable again |
+| A zeroed lot is received again (Purchase Receipt / Stock Entry / Stock Reconciliation with the same serial) | The lot is **reactivated** with the received quantity and keeps its history |
 | Cancelling a Material Transfer | Lots are **moved back** to the source warehouse (no Out/In entries) |
 | Return (credit note / return DN) | Lots on the returned rows are **restored** (In). If the return rows carry no lot, the app inherits the lots from the original document row automatically, in the form and on submit |
 | Manual correction needed | Open the Dispensing Lot and use **Add Transaction** (`...doctype.dispensing_lot.add_transaction`), or the Stock Reconciliation actions below |
@@ -268,16 +270,32 @@ Fields: *Item*, *Item Name*, *Batch*, *Warehouse*, *Source DocType* / *Source Do
    *Default Warehouse*.
 2. Scan into the rows: *Current Qty*, *Current Valuation Rate*, *Quantity Difference* and the
    amounts are recalculated, and the row being scanned is highlighted while you work.
-3. **Actions → Batch Label Print** (row range → review → print).
-4. **Submit** — batch dates and GTIN are set and dispensing lots are created for the scanned
-   packs.
-5. On a **submitted** reconciliation two more Actions are available:
+3. **Actions → Zero Batch from Chosen Warehouse** (available on a **draft** as soon as a *Default
+   Warehouse* is chosen) — a shortcut for counting a whole location down to zero without scanning:
+   it lists every batch holding stock in that warehouse with the quantity on hand, the valuation
+   from the ledger and the dispensing lots of the batch, and fills the form with one line per batch
+   set to quantity `0`. If the form already has lines, choose whether to **replace** them or **add
+   to** them. Nothing is saved by the button — review the lines and submit the reconciliation.
+4. **Actions → Batch Label Print** (row range → review → print).
+5. **Submit** — batch dates and GTIN are set and dispensing lots are created for the scanned packs.
+   On a document whose lines count a batch down to zero, submitting sets the dispensing lots of that
+   batch to `Inactive` instead.
+6. On a **submitted** reconciliation three more Actions are available:
    * **Dispensing Lots** — lists every dispensing lot this reconciliation affects (item, batch,
      lot, remaining qty, status) so you can verify what was recorded.
+   * **Zero Unreconciled Batches** — shows the batch/warehouse combinations still holding stock in
+     this document's warehouse that the reconciliation does not cover (quantity on hand, valuation
+     and the dispensing lots found for each batch) and creates a draft Stock Reconciliation with
+     one **zero-quantity line per combination**. Submitting that draft counts those batches down to
+     zero **and sets their dispensing lots to `Inactive`**, so nothing left in the system can be
+     dispensed from a batch that was written off; cancelling the draft posts the quantities **back**
+     and the lots become dispensable again. Where lot validation is on, each line must carry a
+     dispensing lot before the draft can be submitted.
    * **Correct Lot Quantities** — a one-time repair for legacy documents whose lot quantities
      were recorded incorrectly: it previews the lots that can be auto-corrected from the
      document's line totals, then sets their initial/remaining quantities.
-6. Cancelling reverses the lots the document introduced.
+7. Cancelling reverses the lots the document introduced. When the document counted a batch down to
+   zero, cancelling puts those lots back in stock instead.
 
 ### 5.4 Stock Scanner (cycle count on the floor)
 
@@ -414,6 +432,8 @@ returns sample rows). Use **Dispensing Lot Ledger** instead until it is implemen
 | Print labels for received rows | Purchase Receipt / Stock Entry / Stock Reconciliation → **Actions → Batch Label Print** (3.2) |
 | Require lots on a document type | **Dispensing Setting** toggles (4.2) |
 | See which packs a reconciliation created | Stock Reconciliation → **Actions → Dispensing Lots** (5.3) |
+| Write off a whole warehouse without scanning | Stock Reconciliation (draft) → **Actions → Zero Batch from Chosen Warehouse** (5.3) |
+| Write off batches a reconciliation missed | Stock Reconciliation → **Actions → Zero Unreconciled Batches** (5.3) |
 | Count stock with a scanner | **Stock Scanner** → submit → **Create Stock Reconciliation** (5.4) |
 | Trace one pack | **Dispensing Lots** list or the *Dispensing Lot Ledger* report (9.1) |
 | Move expired stock | **Stock Settings → Move Expired Batches** (8) |
