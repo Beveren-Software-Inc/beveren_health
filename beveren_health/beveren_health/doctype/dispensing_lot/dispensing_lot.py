@@ -6,6 +6,22 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt
 
+# A stock document (Purchase Receipt / Stock Entry / Stock Reconciliation) posts an Out
+# row on a lot when the app counts the pack down or reverses a receipt — see
+# `customize.dispensing_lot`.  Such a row is a stock movement, never a sale, so the lot
+# becomes `Inactive` with its serial kept and can be received again later.
+STOCK_DOC_REVERSAL_DOCTYPES = frozenset({"Purchase Receipt", "Stock Entry", "Stock Reconciliation"})
+
+# Documents that hand a pack to the customer.  Kept in step with
+# `customize.dispensing_lot.DISPENSING_LOT_SALE_DOCTYPES`; the controller must not import
+# the customize layer, which is loaded after it.
+DISPENSING_LOT_SALE_DOCTYPES = frozenset({"Sales Invoice", "Delivery Note"})
+
+
+def _is_stock_document_out(row):
+	"""True for an Out row written by a stock document (count down / reversal)."""
+	return row.transaction_type == "Out" and row.reference_doctype in STOCK_DOC_REVERSAL_DOCTYPES
+
 
 class DispensingLot(Document):
 	def validate(self):
@@ -75,11 +91,13 @@ class DispensingLot(Document):
 	def set_status(self):
 		if flt(self.remaining_qty) <= 0 and flt(self.initial_qty) > 0:
 			self.remaining_qty = 0
-			if self._has_full_pack_sale():
+			if self._zeroed_by_stock_document():
+				# Not a sale: the batch was counted down (or a receipt reversed), so the
+				# serial stays and the pack comes back when it is received again.
+				self.status = "Inactive"
+			elif self._has_full_pack_sale():
 				self.status = "Delivered"
 				self.serial_no = None
-			elif self._cancelled_to_zero():
-				self.status = "Inactive"
 			elif self._has_net_issue():
 				self.status = "Delivered"
 				self.serial_no = None
@@ -102,8 +120,12 @@ class DispensingLot(Document):
 			self.status = "Active"
 			self._restore_serial_no_if_active()
 
-	def _net_full_pack_sales(self):
-		"""Net full packs sold in stock UOM (Out minus In reversals, e.g. cancelled invoice)."""
+	def _net_full_pack_sales(self, only_sale_documents=False):
+		"""Net full packs sold in stock UOM (Out minus In reversals, e.g. cancelled invoice).
+
+		With `only_sale_documents`, the rows a stock document wrote are left out: they
+		count a pack down or reverse a receipt, they are not a sale.
+		"""
 		if not self.stock_uom:
 			return 0
 
@@ -111,6 +133,8 @@ class DispensingLot(Document):
 		inp = 0
 		for row in self.transactions:
 			if row.uom != self.stock_uom:
+				continue
+			if only_sale_documents and row.reference_doctype not in DISPENSING_LOT_SALE_DOCTYPES:
 				continue
 			qty = flt(row.qty)
 			if row.transaction_type == "Out":
@@ -122,7 +146,7 @@ class DispensingLot(Document):
 
 	def _has_full_pack_sale(self):
 		"""Selling in stock UOM (e.g. Pack) means the whole lot is delivered."""
-		return self._net_full_pack_sales() >= 1
+		return self._net_full_pack_sales(only_sale_documents=True) >= 1
 
 	def _returned_dispensing_qty(self):
 		"""Net units returned in the dispensing UOM (e.g. UNIT) from a sales return.
@@ -187,10 +211,26 @@ class DispensingLot(Document):
 
 		return issued > returned
 
-	def _cancelled_to_zero(self):
-		"""True when remaining was cleared by cancelling a stock document (not a sale)."""
+	def _zeroed_by_stock_document(self):
+		"""True when remaining was cleared by a stock document, not by a sale.
+
+		Covers a Stock Reconciliation that counts the batch down to zero and every other
+		Out the app posts from a stock document (cancelled Purchase Receipt / Stock
+		Entry / Stock Reconciliation).  Rows written before the reference was stamped
+		are matched on their "Cancelled ..." remarks, the wording older versions used.
+
+		A pack the customer took stays `Delivered` even when a receipt is cancelled
+		afterwards, so a full-pack sale wins over this check.
+		"""
+		if self._has_full_pack_sale():
+			return False
+
 		for row in self.transactions:
-			if row.transaction_type == "Out" and "Cancelled" in (row.remarks or ""):
+			if row.transaction_type != "Out":
+				continue
+			if _is_stock_document_out(row):
+				return True
+			if "Cancelled" in (row.remarks or ""):
 				return True
 		return False
 
