@@ -517,10 +517,12 @@ def validate_stock_entry_dispensing_lots(doc, method=None):
 # A Stock Reconciliation line carries the *counted* balance of a batch, so a line with
 # quantity 0 says the batch holds nothing in that warehouse once the document is
 # submitted.  Its dispensing lots would otherwise stay dispensable, so they are counted
-# down with an Out row and become Inactive — serial, initial and remaining quantity stay
-# on the record, so receiving the pack again (Purchase Receipt / Stock Entry / Stock
-# Reconciliation with the same serial) reactivates it.  Cancelling the reconciliation
-# posts the quantity back.
+# down with an Out row and become Inactive — serial stays on the record. Receiving the
+# same serial again on a Purchase Receipt, Stock Entry, or Stock Reconciliation
+# reactivates the lot: the quantity on that new document becomes both the initial
+# quantity and the remaining quantity. The earlier zero-out is balanced so it does
+# not reduce the new count. Cancelling the zeroing reconciliation posts the
+# quantity back.
 
 
 def _stock_row_zeroes_batch(doc, row):
@@ -763,6 +765,36 @@ def _lot_has_cancel_out(lot):
 	return False
 
 
+def _dispensing_qty_counted_on_lot(lot, row):
+	"""Qty that set_remaining_qty will add into issued or returned."""
+	if row.transaction_type == "Transfer":
+		return 0
+	if lot.stock_uom and row.uom == lot.stock_uom and flt(row.qty) >= 1:
+		return 0
+	return flt(row.qty)
+
+
+def _open_stock_document_dispensing_qty(lot):
+	"""Dispensing qty a stock document took out and has not received back.
+
+	Sales are left out. Balancing this quantity on the next receipt lets the
+	new counted quantity become both initial and remaining.
+	"""
+	stock_doctypes = frozenset(STOCK_DOC_CONFIG)
+	taken = 0
+	put_back = 0
+	for row in lot.transactions or []:
+		qty = _dispensing_qty_counted_on_lot(lot, row)
+		if not qty:
+			continue
+		is_stock_document = row.reference_doctype in stock_doctypes
+		if row.transaction_type == "Out" and is_stock_document:
+			taken += qty
+		elif row.transaction_type == "In" and is_stock_document:
+			put_back += qty
+	return max(flt(taken - put_back), 0)
+
+
 def _lot_needs_stock_reactivation(lot):
 	"""True when lot was zeroed by cancelling a stock document and can be received again."""
 	if lot.status == "Inactive":
@@ -802,6 +834,8 @@ def _restore_dispensing_lot_from_stock_doc(
 	if warehouse:
 		lot.warehouse = warehouse
 	lot.uom = dispensing_uom or lot.uom
+	# The quantity on this document is a fresh count. It replaces the initial
+	# quantity the lot had before a stock document counted it down to zero.
 	lot.initial_qty = lot_qty
 	if gtin:
 		lot.gtin = gtin
@@ -811,7 +845,13 @@ def _restore_dispensing_lot_from_stock_doc(
 	lot.source_doctype = reference_doctype
 	lot.source_document = reference_name
 
-	in_qty = lot_qty - flt(lot.remaining_qty)
+	# A zero-out (or a cancelled receipt) is still an Out on the lot. Posting an
+	# In of only the new quantity leaves that Out in the balance and remaining
+	# goes negative. Balance the open stock-document quantity instead, so
+	# initial and remaining both become the quantity counted now.
+	in_qty = _open_stock_document_dispensing_qty(lot)
+	if in_qty <= 0:
+		in_qty = lot_qty - flt(lot.remaining_qty)
 
 	if in_qty > 0 and not _lot_has_reference_transaction(lot, reference_doctype, reference_name, "In"):
 		_append_lot_transaction(
