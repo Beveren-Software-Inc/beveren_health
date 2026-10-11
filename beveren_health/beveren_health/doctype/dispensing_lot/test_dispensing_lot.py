@@ -5,6 +5,7 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from beveren_health.beveren_health.customize.dispensing_lot import (
+	_open_stock_document_dispensing_qty,
 	_stock_row_zeroes_batch,
 	compute_dispensing_qty_per_serial,
 	round_dispensing_qty,
@@ -247,6 +248,45 @@ class IntegrationTestDispensingLot(IntegrationTestCase):
 		self.assertEqual(lot.remaining_qty, 0.0)
 		self.assertEqual(lot.status, "Delivered")
 		self.assertIsNone(lot.serial_no)
+
+	def test_new_count_after_zero_becomes_initial_and_remaining(self):
+		# Counted down to zero at 20, then a new reconciliation counts 5.
+		# The old zero-out must not reduce that 5.
+		lot = self._lot_after_transactions(
+			[
+				{
+					"transaction_type": "Out",
+					"qty": 20,
+					"uom": "UNIT",
+					"reference_doctype": "Stock Reconciliation",
+					"reference_name": "MAT-RECO-2026-00079",
+					"remarks": "Zeroed by Stock Reconciliation MAT-RECO-2026-00079",
+				}
+			],
+			initial_qty=20,
+		)
+		self.assertEqual(lot.remaining_qty, 0.0)
+		self.assertEqual(_open_stock_document_dispensing_qty(lot), 20.0)
+
+		lot.initial_qty = 5
+		lot.append(
+			"transactions",
+			{
+				"transaction_type": "In",
+				"qty": 20,
+				"uom": "UNIT",
+				"reference_doctype": "Stock Reconciliation",
+				"reference_name": "MAT-RECO-2026-00080",
+				"posting_date": "2026-10-11",
+				"remarks": "Received from Stock Reconciliation MAT-RECO-2026-00080",
+			},
+		)
+		lot.set_remaining_qty()
+		lot.set_status()
+
+		self.assertEqual(lot.initial_qty, 5.0)
+		self.assertEqual(lot.remaining_qty, 5.0)
+		self.assertEqual(lot.status, "Active")
 
 	def test_lot_received_again_is_active(self):
 		# Reactivation posts an In row with the received quantity, serial restored.
