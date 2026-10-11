@@ -904,6 +904,113 @@ function ss_run_validation(frm, method, title, columns) {
 	run();
 }
 
+function show_find_scanner_dialog(frm) {
+	const dialog = new frappe.ui.Dialog({
+		title: __("Find Item or Batch"),
+		fields: [
+			{
+				fieldname: "item_code",
+				fieldtype: "Link",
+				label: __("Item"),
+				options: "Item",
+				onchange() {
+					dialog.set_value("batch_no", "");
+				},
+			},
+			{
+				fieldname: "batch_no",
+				fieldtype: "Link",
+				label: __("Batch"),
+				options: "Batch",
+				get_query() {
+					const item_code = dialog.get_value("item_code");
+					if (!item_code) {
+						return {};
+					}
+					return { filters: { item: item_code } };
+				},
+			},
+			{
+				fieldname: "results",
+				fieldtype: "HTML",
+			},
+		],
+		primary_action_label: __("Find"),
+		primary_action() {
+			const item_code = dialog.get_value("item_code") || "";
+			const batch_no = dialog.get_value("batch_no") || "";
+			if (!item_code && !batch_no) {
+				frappe.msgprint(__("Enter an Item or a Batch."));
+				return;
+			}
+			frappe.call({
+				method: "beveren_health.beveren_health.customize.stock_scanner.find_item_or_batch_on_scanners",
+				args: { item_code, batch_no },
+				freeze: true,
+				freeze_message: __("Searching Stock Scanners..."),
+				callback(r) {
+					ss_render_scanner_search(dialog, r.message || {});
+				},
+			});
+		},
+	});
+	dialog.show();
+}
+
+function ss_render_scanner_search(dialog, result) {
+	const rows = result.rows || [];
+	const field = dialog.get_field("results");
+	if (!field) {
+		return;
+	}
+	if (!rows.length) {
+		field.$wrapper.html(
+			`<p class="text-muted" style="margin-top:12px;">${ss_escape_html(
+				result.message || __("No Stock Scanner line has this item or batch.")
+			)}</p>`
+		);
+		return;
+	}
+
+	const body = rows
+		.map((row) => {
+			const scanner = ss_escape_html(row.stock_scanner || "");
+			const href = frappe.utils.get_form_link("Stock Scanner", row.stock_scanner);
+			return `<tr>
+				<td style="padding:6px 8px;"><a href="${href}">${scanner}</a></td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.status || "")}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.idx)}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.item_code || "")}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.item_name || "")}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.batch_no || "")}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.warehouse || row.set_warehouse || "")}</td>
+				<td style="padding:6px 8px;">${ss_escape_html(row.qty)}</td>
+			</tr>`;
+		})
+		.join("");
+
+	field.$wrapper.html(`
+		<p style="margin-top:12px;">${ss_escape_html(result.message || "")}</p>
+		<div style="max-height:360px;overflow:auto;">
+			<table class="table table-bordered" style="margin:0;">
+				<thead>
+					<tr>
+						<th style="padding:6px 8px;">${__("Stock Scanner")}</th>
+						<th style="padding:6px 8px;">${__("Status")}</th>
+						<th style="padding:6px 8px;">${__("Line")}</th>
+						<th style="padding:6px 8px;">${__("Item")}</th>
+						<th style="padding:6px 8px;">${__("Item Name")}</th>
+						<th style="padding:6px 8px;">${__("Batch")}</th>
+						<th style="padding:6px 8px;">${__("Warehouse")}</th>
+						<th style="padding:6px 8px;">${__("Qty")}</th>
+					</tr>
+				</thead>
+				<tbody>${body}</tbody>
+			</table>
+		</div>
+	`);
+}
+
 frappe.ui.form.on("Stock Scanner", {
 	scan_barcode(frm) {
 		const barcode = (frm.doc.scan_barcode || "").trim();
@@ -951,6 +1058,8 @@ frappe.ui.form.on("Stock Scanner", {
 		if (batch_df) {
 			batch_df.only_select = 1;
 		}
+
+		frm.add_custom_button(__("Find Item or Batch"), () => show_find_scanner_dialog(frm));
 
 		if (!frm.is_new()) {
 			frm.add_custom_button(

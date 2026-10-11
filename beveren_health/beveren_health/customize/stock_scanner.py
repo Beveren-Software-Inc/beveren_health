@@ -400,3 +400,71 @@ def validate_batch_item_mismatch(name: str):
 			else _("Found {0} line(s) where Batch does not belong to the Item.").format(len(mismatched))
 		),
 	}
+
+
+_SCANNER_STATUS = {0: "Draft", 1: "Submitted", 2: "Cancelled"}
+
+
+def _batch_names_for_lookup(batch_no: str) -> list[str]:
+	"""Match a Batch name, batch id, or the value typed on the line."""
+	names = {batch_no}
+	for field in ("name", "batch_id", "custom_original_batch_id"):
+		if not frappe.db.has_column("Batch", field) and field != "name":
+			continue
+		found = frappe.get_all("Batch", filters={field: batch_no}, pluck="name")
+		names.update(found)
+	return list(names)
+
+
+@frappe.whitelist()
+def find_item_or_batch_on_scanners(item_code: str = "", batch_no: str = ""):
+	"""Find every Stock Scanner line that has this item and/or batch."""
+	frappe.has_permission("Stock Scanner", "read", throw=True)
+
+	item_code = (item_code or "").strip()
+	batch_no = (batch_no or "").strip()
+	if not item_code and not batch_no:
+		frappe.throw(_("Enter an Item or a Batch."))
+
+	from frappe.query_builder import Order
+
+	scanner_item = frappe.qb.DocType("Stock Scanner Item")
+	scanner = frappe.qb.DocType("Stock Scanner")
+	query = (
+		frappe.qb.from_(scanner_item)
+		.inner_join(scanner)
+		.on(scanner.name == scanner_item.parent)
+		.select(
+			scanner.name.as_("stock_scanner"),
+			scanner.docstatus,
+			scanner.posting_date,
+			scanner.set_warehouse,
+			scanner_item.idx,
+			scanner_item.item_code,
+			scanner_item.item_name,
+			scanner_item.batch_no,
+			scanner_item.warehouse,
+			scanner_item.qty,
+		)
+		.where(scanner.docstatus != 2)
+		.orderby(scanner.modified, order=Order.desc)
+		.orderby(scanner_item.idx, order=Order.asc)
+	)
+	if item_code:
+		query = query.where(scanner_item.item_code == item_code)
+	if batch_no:
+		batches = _batch_names_for_lookup(batch_no)
+		query = query.where((scanner_item.batch_no.isin(batches)) | (scanner_item.batch_no == batch_no))
+
+	rows = query.run(as_dict=True)
+
+	for row in rows:
+		row["status"] = _(_SCANNER_STATUS.get(row.docstatus, ""))
+		row["posting_date"] = str(row.posting_date or "")
+
+	message = (
+		_("Found {0} line(s).").format(len(rows))
+		if rows
+		else _("No Stock Scanner line has this item or batch.")
+	)
+	return {"count": len(rows), "rows": rows, "message": message}

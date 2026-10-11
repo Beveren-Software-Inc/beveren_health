@@ -79,6 +79,14 @@ frappe.ui.form.on("Stock Reconciliation", {
 					__("Actions")
 				);
 
+				frm.add_custom_button(
+					__("Restore Missed Counted Stock"),
+					function () {
+						show_restore_missed_scanner_dialog(frm);
+					},
+					__("Actions")
+				);
+
 				setup_dispensing_lot_qty_correction_button(frm);
 			}
 		}
@@ -1081,6 +1089,139 @@ function show_dispensing_lots_for_reconciliation(frm) {
 	});
 }
 
+// ─── Restore counted lines that matched stock and were later zeroed ────────────
+
+function show_restore_missed_scanner_dialog(frm) {
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.stock_reconciliation.get_missed_scanner_lines",
+		args: { name: frm.doc.name },
+		freeze: true,
+		freeze_message: __("Comparing Stock Scanner lines..."),
+		callback(r) {
+			const data = r.message || {};
+			if (data.existing) {
+				frappe.msgprint({
+					title: __("Already created"),
+					indicator: "blue",
+					message: __("Reconciliation {0} already restores these lines.", [
+						data.existing,
+					]),
+				});
+				return;
+			}
+			if (!data.total_lines) {
+				frappe.msgprint({
+					title: __("Nothing to restore"),
+					indicator: "green",
+					message: __(
+						"Every counted Stock Scanner line is already on this reconciliation, or its quantity still matches stock."
+					),
+				});
+				return;
+			}
+
+			const dialog = new frappe.ui.Dialog({
+				title: __("Restore Missed Counted Stock"),
+				size: "extra-large",
+				fields: [
+					{
+						fieldtype: "HTML",
+						fieldname: "summary",
+						options: build_restore_missed_html(data),
+					},
+					{
+						fieldtype: "Date",
+						fieldname: "posting_date",
+						label: __("Posting Date"),
+						default: frappe.datetime.get_today(),
+						reqd: 1,
+					},
+				],
+				primary_action_label: __("Create Draft Reconciliation"),
+				primary_action(values) {
+					dialog.hide();
+					frappe.call({
+						method: "beveren_health.beveren_health.customize.stock_reconciliation.create_missed_scanner_reconciliation",
+						args: {
+							name: frm.doc.name,
+							posting_date: values.posting_date,
+						},
+						freeze: true,
+						freeze_message: __("Creating Stock Reconciliation..."),
+						callback(res) {
+							if (!res.message) {
+								return;
+							}
+							frappe.show_alert({
+								message: __("Draft {0} created", [res.message]),
+								indicator: "green",
+							});
+							frappe.set_route("Form", "Stock Reconciliation", res.message);
+						},
+					});
+				},
+			});
+			dialog.show();
+		},
+	});
+}
+
+function build_restore_missed_html(data) {
+	const lines = data.lines || [];
+	const rows = lines
+		.map((line) => {
+			return `<tr>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(line.warehouse || "")}</td>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(line.item_code || "")}</td>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(line.item_name || "")}</td>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(line.batch_no || "")}</td>
+				<td style="padding:4px 8px; text-align:right;">${flt(line.current_qty)}</td>
+				<td style="padding:4px 8px; text-align:right;">${flt(line.qty)}</td>
+				<td style="padding:4px 8px;">${frappe.utils.escape_html(line.stock_scanners || "")}</td>
+			</tr>`;
+		})
+		.join("");
+	const unchanged = data.unchanged
+		? `<p class="text-muted">${__(
+				"{0} counted line(s) still match stock and are not included.",
+				[data.unchanged]
+		  )}</p>`
+		: "";
+	const truncated = data.truncated
+		? `<p class="text-muted">${__(
+				"Showing the first {0} of {1} line(s). The draft will include all of them.",
+				[lines.length, data.total_lines]
+		  )}</p>`
+		: "";
+
+	return `
+		<p>${__(
+			"These lines were counted on the Stock Scanners that created this reconciliation, in its warehouse, but were left off because the counted quantity already matched stock. A later zeroing reconciliation then cleared them. The new draft sets each line back to the counted quantity."
+		)}</p>
+		<p>${__("Lines to restore")}: <b>${data.total_lines}</b>. ${__("Counted quantity")}: <b>${flt(
+		data.total_qty
+	)}</b>.</p>
+		${unchanged}
+		<div style="overflow-x:auto; max-height:300px; overflow-y:auto;">
+			<table class="table table-bordered" style="margin:0; font-size:12px;">
+				<thead>
+					<tr>
+						<th>${__("Warehouse")}</th>
+						<th>${__("Item")}</th>
+						<th>${__("Item Name")}</th>
+						<th>${__("Batch")}</th>
+						<th style="text-align:right;">${__("Stock now")}</th>
+						<th style="text-align:right;">${__("Counted qty")}</th>
+						<th>${__("Stock Scanner")}</th>
+					</tr>
+				</thead>
+				<tbody>${rows}</tbody>
+			</table>
+		</div>
+		${truncated}
+	`;
+}
+
 // ─── Zero un-reconciled batches ────────────────────────────────────────────────
 
 function show_unreconciled_batches_dialog(frm) {
@@ -1098,7 +1239,7 @@ function show_unreconciled_batches_dialog(frm) {
 					title: __("Nothing to zero"),
 					indicator: "green",
 					message: __(
-						"Every batch still holding stock in this document's warehouses is already on this Stock Reconciliation."
+						"Every batch still holding stock in this warehouse is already on this Stock Reconciliation or was counted on the Stock Scanners that created it."
 					),
 				});
 				return;
@@ -1178,7 +1319,7 @@ function build_unreconciled_summary_html(data) {
 
 	return `
 		<p>${__(
-			"These batch/warehouse combinations are not on this Stock Reconciliation. A draft Stock Reconciliation will be created with one zero-quantity line per combination."
+			"These batch/warehouse combinations are not on this Stock Reconciliation and were not counted on the Stock Scanners that created it. A draft Stock Reconciliation will be created with one zero-quantity line per combination."
 		)}</p>
 		<p>${__(
 			"Submitting that draft counts those batches down to zero and sets their dispensing lots to Inactive; cancelling it puts the lots back in stock."
