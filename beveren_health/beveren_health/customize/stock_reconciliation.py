@@ -134,10 +134,14 @@ def update_valuation_rates_from_file(name: str, file_url: str):
 # ─── Zero batches of a warehouse ────────────────────────────────────────────────
 #
 # A submitted Stock Reconciliation only covers the batch/warehouse combinations that
-# were actually counted. Stock still sitting in the ledger for the same warehouse
-# (typically a batch the scanner missed) keeps its balance forever. The helpers below
-# find those combinations and build a follow-up draft Stock Reconciliation that zeroes
-# them, so the ledger matches what was counted.
+# were saved on it. Stock still sitting in the ledger for the same warehouse keeps
+# its balance. The helpers below find those combinations and build a follow-up draft
+# that zeroes them.
+#
+# A batch is left alone when it is already on this reconciliation, or when it was
+# counted on a Stock Scanner that created this reconciliation (even if ERPNext later
+# dropped the line because the quantity already matched). Only the scanners linked
+# to this document are read, and only in the warehouse this reconciliation covers.
 #
 # The same batch balances also back the Zero Batch from Chosen Warehouse button: on a
 # brand new reconciliation, Default Warehouse picks the location and the button fills
@@ -212,12 +216,18 @@ def _document_warehouses(doc):
 	return warehouses
 
 
+def _line_warehouse(row, fallback=None):
+	return row.get("warehouse") or fallback or ""
+
+
 def _reconciled_batch_keys(doc):
 	"""Item/batch/warehouse combinations already present on the reconciliation."""
+	fallback = doc.get("set_warehouse")
 	keys = set()
 	for row in doc.get("items") or []:
-		if row.item_code and row.batch_no:
-			keys.add((row.item_code, row.batch_no, row.warehouse))
+		warehouse = _line_warehouse(row, fallback)
+		if row.item_code and row.batch_no and warehouse:
+			keys.add((row.item_code, row.batch_no, warehouse))
 	return keys
 
 
@@ -371,9 +381,27 @@ def _get_batch_balance_lines(warehouses, excluded=None):
 	return lines
 
 
+def _scanner_batch_keys(doc):
+	"""Batches counted on the Stock Scanners that created this reconciliation.
+
+	Limited to this document's warehouse. A counted batch must not be zeroed just
+	because it was left off the reconciliation when the quantity already matched.
+	"""
+	warehouses = _document_warehouses(doc)
+	names = _scanners_linked_to_reconciliation(doc)
+	if not warehouses or not names:
+		return set()
+
+	keys = set()
+	for entry in _counted_lines_from_scanners(names, warehouses).values():
+		if entry["item_code"] and entry["batch_no"]:
+			keys.add((entry["item_code"], entry["batch_no"], entry["warehouse"]))
+	return keys
+
+
 def _get_unreconciled_batch_lines(doc):
-	"""Batch/warehouse combinations holding stock that the reconciliation does not cover."""
-	excluded = _reconciled_batch_keys(doc) | _zeroing_document_batch_keys(doc.name)
+	"""Stock in this warehouse that is neither on the reconciliation nor on its scanners."""
+	excluded = _reconciled_batch_keys(doc) | _zeroing_document_batch_keys(doc.name) | _scanner_batch_keys(doc)
 	return _get_batch_balance_lines(_document_warehouses(doc), excluded)
 
 
@@ -457,7 +485,9 @@ def create_unreconciled_batch_reconciliation(
 	lines = _get_unreconciled_batch_lines(doc)
 	if not lines:
 		frappe.throw(
-			_("Every batch with stock in these warehouses is already covered by {0}.").format(doc.name)
+			_(
+				"Every batch with stock in this warehouse is already on {0} or was counted on the Stock Scanners that created it."
+			).format(doc.name)
 		)
 
 	sr = frappe.new_doc("Stock Reconciliation")
@@ -570,3 +600,307 @@ def get_warehouse_zeroing_lines(
 	summary["defaults"] = _zeroing_defaults(company, purpose)
 
 	return summary
+
+
+# ─── Restore stock that was counted but dropped because the quantity matched ─────
+#
+# Creating a Stock Reconciliation from Stock Scanners includes every counted line.
+# On save, ERPNext drops a line whose counted quantity and rate already match the
+# ledger ("Removed items with no change in quantity or value"). Those lines are
+# therefore absent from the submitted reconciliation.
+#
+# Zero Unreconciled Batches treats "not on this reconciliation" as "not counted"
+# and writes the balance to zero. Counted lines that were only dropped because
+# they matched are zeroed too. This button rebuilds a draft from the linked
+# Stock Scanners for just those missing lines, at the quantity that was counted,
+# so submitting it puts that stock back.
+
+RESTORE_SCANNER_NOTE_PREFIX = "Restore missed scanner stock from "
+
+
+def _scanners_linked_to_reconciliation(doc):
+	"""Stock Scanners this reconciliation was created from."""
+	names = []
+	if frappe.db.has_column("Stock Scanner", "stock_reconciliation"):
+		names = frappe.get_all(
+			"Stock Scanner",
+			filters={"stock_reconciliation": doc.name, "docstatus": ("<", 2)},
+			pluck="name",
+		)
+
+	if frappe.db.has_column("Stock Reconciliation Item", "custom_stock_scanner"):
+		for row in doc.get("items") or []:
+			for part in (row.get("custom_stock_scanner") or "").split(","):
+				name = part.strip()
+				if name and name not in names and frappe.db.exists("Stock Scanner", name):
+					names.append(name)
+
+	return names
+
+
+def _counted_lines_from_scanners(scanner_names, warehouses):
+	"""Merge lines from the scanners that created this reconciliation, in its warehouse only."""
+	from beveren_health.beveren_health.customize.dispensing_lot import split_dispensing_lots
+
+	allowed = set(warehouses or [])
+	merged = {}
+	if not scanner_names or not allowed:
+		return merged
+
+	for name in scanner_names:
+		scanner = frappe.get_doc("Stock Scanner", name)
+		default_wh = scanner.set_warehouse
+		for row in scanner.get("items") or []:
+			if not row.item_code:
+				continue
+			warehouse = row.warehouse or default_wh
+			if not warehouse or warehouse not in allowed:
+				continue
+			key = (row.item_code, row.batch_no or "", warehouse)
+			lots = split_dispensing_lots(row.get("serial_no") or "")
+			if key not in merged:
+				merged[key] = {
+					"item_code": row.item_code,
+					"item_name": row.item_name or "",
+					"batch_no": row.batch_no or "",
+					"warehouse": warehouse,
+					"qty": flt(row.qty),
+					"valuation_rate": flt(row.valuation_rate),
+					"stock_uom": row.stock_uom or "",
+					"lots": list(lots),
+					"gtin": row.get("gtin") or "",
+					"manufacturing_date": row.get("manufacturing_date"),
+					"expiry_date": row.get("expiry_date"),
+					"stock_scanners": [scanner.name],
+				}
+			else:
+				entry = merged[key]
+				entry["qty"] = flt(entry["qty"]) + flt(row.qty)
+				for lot in lots:
+					if lot and lot not in entry["lots"]:
+						entry["lots"].append(lot)
+				if scanner.name not in entry["stock_scanners"]:
+					entry["stock_scanners"].append(scanner.name)
+				if not entry["valuation_rate"] and flt(row.valuation_rate):
+					entry["valuation_rate"] = flt(row.valuation_rate)
+	return merged
+
+
+def _sr_line_keys(doc):
+	fallback = doc.get("set_warehouse")
+	keys = set()
+	for row in doc.get("items") or []:
+		if not row.item_code:
+			continue
+		warehouse = _line_warehouse(row, fallback)
+		if warehouse:
+			keys.add((row.item_code, row.batch_no or "", warehouse))
+	return keys
+
+
+def _existing_restore_reconciliation(source_name):
+	if not frappe.db.has_column("Stock Reconciliation", "custom_notes"):
+		return None
+	return frappe.db.get_value(
+		"Stock Reconciliation",
+		{
+			"docstatus": ("<", 2),
+			"custom_notes": ("like", f"{RESTORE_SCANNER_NOTE_PREFIX}{source_name}%"),
+		},
+		"name",
+	)
+
+
+def _ledger_qty_and_rate(item_code, warehouse, batch_no, posting_date, posting_time):
+	"""Current quantity (batch quantity when a batch is set) and warehouse valuation rate."""
+	from erpnext.stock.doctype.batch.batch import get_batch_qty
+	from erpnext.stock.utils import get_stock_balance
+
+	balance = get_stock_balance(item_code, warehouse, posting_date, posting_time, with_valuation_rate=True)
+	qty, rate = balance if isinstance(balance, tuple) else (balance, 0)
+	if batch_no:
+		qty = (
+			get_batch_qty(
+				batch_no,
+				warehouse,
+				item_code,
+				posting_date=posting_date,
+				posting_time=posting_time,
+				for_stock_levels=True,
+				consider_negative_batches=True,
+			)
+			or 0
+		)
+	return flt(qty), flt(rate)
+
+
+def _missed_scanner_lines(doc):
+	"""Counted scanner lines that are not on this reconciliation and no longer match stock."""
+	scanner_names = _scanners_linked_to_reconciliation(doc)
+	if not scanner_names:
+		frappe.throw(
+			_("{0} was not created from Stock Scanners, so there are no counted lines to restore.").format(
+				doc.name
+			)
+		)
+
+	warehouses = _document_warehouses(doc)
+	if not warehouses:
+		frappe.throw(_("Set a warehouse on {0} before restoring counted stock.").format(doc.name))
+
+	on_document = _sr_line_keys(doc)
+	posting_date = nowdate()
+	posting_time = nowtime()
+	missed = []
+	unchanged = 0
+
+	for key, entry in _counted_lines_from_scanners(scanner_names, warehouses).items():
+		if key in on_document:
+			continue
+
+		counted_qty = flt(entry["qty"])
+		if not counted_qty:
+			counted_qty = len(entry["lots"]) if entry["lots"] else 1
+		entry["qty"] = counted_qty
+
+		current_qty, current_rate = _ledger_qty_and_rate(
+			entry["item_code"],
+			entry["warehouse"],
+			entry["batch_no"],
+			posting_date,
+			posting_time,
+		)
+		if flt(counted_qty, 6) == flt(current_qty, 6):
+			unchanged += 1
+			continue
+
+		rate = flt(entry["valuation_rate"]) or current_rate
+		entry["current_qty"] = current_qty
+		entry["current_valuation_rate"] = current_rate
+		entry["valuation_rate"] = rate
+		entry["value"] = counted_qty * rate
+		missed.append(entry)
+
+	missed.sort(key=lambda row: (row["warehouse"], row["item_code"], row["batch_no"]))
+	return scanner_names, missed, unchanged
+
+
+def _build_restore_item_row(line):
+	qty = flt(line["qty"])
+	rate = flt(line["valuation_rate"])
+	current_qty = flt(line.get("current_qty"))
+	current_rate = flt(line.get("current_valuation_rate"))
+
+	item_row = {
+		"item_code": line["item_code"],
+		"item_name": line["item_name"],
+		"warehouse": line["warehouse"],
+		"batch_no": line["batch_no"] or None,
+		"qty": qty,
+		"valuation_rate": rate,
+		"amount": qty * rate,
+		"current_qty": current_qty,
+		"current_valuation_rate": current_rate,
+		"current_amount": current_qty * current_rate,
+		"quantity_difference": qty - current_qty,
+		"amount_difference": (qty * rate) - (current_qty * current_rate),
+		"stock_uom": line["stock_uom"],
+		"use_serial_batch_fields": 1,
+		"allow_zero_valuation_rate": 1,
+	}
+	if line.get("lots") and frappe.db.has_column("Stock Reconciliation Item", DISPENSING_LOT_FIELD):
+		item_row[DISPENSING_LOT_FIELD] = format_dispensing_lot_names_for_field(line["lots"])
+	if frappe.db.has_column("Stock Reconciliation Item", "custom_stock_scanner"):
+		item_row["custom_stock_scanner"] = ", ".join(line.get("stock_scanners") or [])
+	if line.get("gtin") and frappe.db.has_column("Stock Reconciliation Item", "custom_gstin"):
+		item_row["custom_gstin"] = line["gtin"]
+	if line.get("manufacturing_date") and frappe.db.has_column(
+		"Stock Reconciliation Item", "custom_manufacturing_date"
+	):
+		item_row["custom_manufacturing_date"] = line["manufacturing_date"]
+	if line.get("expiry_date") and frappe.db.has_column("Stock Reconciliation Item", "custom_expiry_date"):
+		item_row["custom_expiry_date"] = line["expiry_date"]
+	return item_row
+
+
+@frappe.whitelist()
+def get_missed_scanner_lines(name: str):
+	"""Preview counted scanner lines missing from this reconciliation."""
+	doc = _get_submitted_reconciliation(name)
+	scanners, missed, unchanged = _missed_scanner_lines(doc)
+	existing = _existing_restore_reconciliation(doc.name)
+
+	return {
+		"source": doc.name,
+		"scanners": scanners,
+		"unchanged": unchanged,
+		"existing": existing,
+		"currency": frappe.get_cached_value("Company", doc.company, "default_currency"),
+		"total_lines": len(missed),
+		"total_qty": flt(sum(flt(row["qty"]) for row in missed)),
+		"lines": [
+			{
+				"item_code": row["item_code"],
+				"item_name": row["item_name"],
+				"warehouse": row["warehouse"],
+				"batch_no": row["batch_no"],
+				"qty": row["qty"],
+				"current_qty": row["current_qty"],
+				"valuation_rate": row["valuation_rate"],
+				"stock_scanners": ", ".join(row.get("stock_scanners") or []),
+			}
+			for row in missed[:PREVIEW_LINE_LIMIT]
+		],
+		"truncated": len(missed) > PREVIEW_LINE_LIMIT,
+	}
+
+
+@frappe.whitelist()
+def create_missed_scanner_reconciliation(name: str, posting_date: str | None = None) -> str:
+	"""Draft Stock Reconciliation for counted lines dropped because the quantity matched."""
+	doc = _get_submitted_reconciliation(name)
+	frappe.has_permission("Stock Reconciliation", "create", throw=True)
+
+	existing = _existing_restore_reconciliation(doc.name)
+	if existing:
+		frappe.throw(
+			_("Draft or submitted reconciliation {0} already restores the missed lines of {1}.").format(
+				existing, doc.name
+			)
+		)
+
+	_scanners, missed, _unchanged = _missed_scanner_lines(doc)
+	if not missed:
+		frappe.throw(
+			_(
+				"No counted Stock Scanner line is missing from {0}. Lines whose quantity still matches stock are left out."
+			).format(doc.name)
+		)
+
+	sr = frappe.new_doc("Stock Reconciliation")
+	sr.company = doc.company
+	sr.purpose = "Stock Reconciliation"
+	sr.posting_date = posting_date or nowdate()
+	sr.posting_time = nowtime()
+	if doc.set_warehouse:
+		sr.set_warehouse = doc.set_warehouse
+	sr.cost_center = doc.cost_center or None
+	if frappe.db.has_column("Stock Reconciliation", "custom_notes"):
+		sr.custom_notes = f"{RESTORE_SCANNER_NOTE_PREFIX}{doc.name}"
+
+	_apply_stock_reconciliation_defaults(sr, base_scanner=doc)
+
+	if is_perpetual_inventory_enabled(sr.company) and not sr.expense_account:
+		frappe.throw(
+			_(
+				"Could not resolve a Difference Account for {0}. Set a Stock Adjustment Account on the Company first."
+			).format(sr.company)
+		)
+
+	for line in missed:
+		sr.append("items", _build_restore_item_row(line))
+
+	sr.insert()
+	# The desk opens this draft immediately after the call returns.
+	frappe.db.commit()  # nosemgrep
+	return sr.name
