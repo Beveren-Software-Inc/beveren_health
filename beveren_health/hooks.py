@@ -336,7 +336,9 @@ scheduler_events = {
 # The site customization makes fields required that the records the test framework
 # creates for the app cannot fill in, which aborts `bench run-tests` with a
 # MandatoryError before a single test runs. The hook lifts those requirements for the
-# run, see beveren_health.install.before_tests.
+# run and mutes outgoing email, so the test data bootstrap - which switches the Email
+# Account HRMS ships on as the outgoing account, without an SMTP server - cannot abort
+# the run either. See beveren_health.install.before_tests.
 before_tests = "beveren_health.install.before_tests"
 
 # Extend DocType Class

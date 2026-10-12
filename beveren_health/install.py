@@ -44,8 +44,11 @@ def before_tests():
 
 	Called by ``bench run-tests`` through the ``before_tests`` hook in hooks.py, before
 	the integration tests - and therefore before the framework creates any of those
-	records - run.
+	records - run. Outgoing email is muted for the run as well, see
+	_mute_outgoing_email.
 	"""
+	_mute_outgoing_email()
+
 	relaxed = [
 		f"{doctype}.{fieldname}"
 		for doctype, fieldnames in MANDATORY_FIELDS_FOR_TEST_RECORDS.items()
@@ -60,6 +63,57 @@ def before_tests():
 	# The integration test classes roll their transaction back when they are torn down,
 	# so the cleared flags have to be committed to stay cleared for the rest of the run.
 	frappe.db.commit()  # nosemgrep
+
+
+def _mute_outgoing_email():
+	"""Mute outgoing email for the run, so that no test needs a working Email Account.
+
+	``hrms.tests.utils.BootStrapTestData`` (also module level, like the ERPNext one in
+	before_tests) switches the Email Account it expects the site to ship - the "Jobs"
+	account that HRMS' own install records create, without an SMTP server - on as the
+	default outgoing account, and commits:
+
+	    email_account = frappe.get_doc("Email Account", "Jobs")
+	    email_account.enable_outgoing = 1
+	    email_account.default_outgoing = 1
+	    email_account.save()
+	    ...
+	    frappe.db.commit()
+
+	Any mail that the run queues and sends immediately is sent by that commit: ``now``
+	only means "send on commit", it registers ``EmailQueue.send`` on the transaction's
+	after_commit hooks (frappe/email/__init__.py). Frappe's notification and user code
+	does that during tests (``now=frappe.in_test``, ``now=True``), and so does this
+	app's own beveren_health.notifications.employee_notification. The account has no
+	SMTP server, so resolving it aborts the whole test run inside
+	``frappe.email.smtp.SMTPServer``:
+
+	    OutgoingEmailError: Email Account not setup. Please create a new Email Account
+	    from Settings > Email Account
+
+	The error is raised while the bootstrap is imported, i.e. before the first
+	beveren_health test runs, which is why ``bench run-tests`` looks broken rather than
+	failing a test. ``EmailQueue.send`` returns before it resolves an account while
+	``frappe.are_emails_muted()`` is set, so muted mail stays in the queue as
+	"Not Sent" - the same thing the CI workflow asks for with
+	``bench --site test_site set-config mute_emails 1``.
+
+	``frappe.flags`` is the in-process switch the framework itself uses (see
+	frappe.core.doctype.data_import), ``frappe.conf`` the site config the CI sets: both
+	are set so the mute holds even while the integration test classes swap
+	``frappe.local.flags`` out for their own copy.
+
+	This hook is not the only line of defence: ``bench run-tests`` imports the app's
+	test modules in order to collect the suites, and calls the ``before_tests`` hooks
+	only after that (frappe/commands/testing.py: discover_all_tests() first, then
+	runner.iterRun() -> IntegrationTestPreparation). A test module that imports one of
+	the bootstraps itself would therefore be imported before this hook can run, which is
+	why the CI workflow also mutes through the site config (``bench --site test_site
+	set-config mute_emails 1``): a site config value holds from frappe.init() on, i.e.
+	while the suites are still being collected.
+	"""
+	frappe.flags.mute_emails = True
+	frappe.conf.mute_emails = 1
 
 
 def _clear_required_flag(doctype, fieldname):
