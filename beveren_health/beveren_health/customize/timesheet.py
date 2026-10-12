@@ -15,6 +15,7 @@ from __future__ import annotations
 import calendar
 import json
 from collections import defaultdict
+from inspect import signature
 
 import frappe
 from frappe import _
@@ -303,18 +304,21 @@ def _total_salary_from_structure(employee: str, on_date) -> float:
 
 	# Building the slip can msgprint about tax components. This is only a
 	# salary lookup, so those notices must not surface on the Timesheet.
+	# Live HRMS does not accept ignore_permissions on make_salary_slip; local does.
 	logged = list(frappe.local.message_log or [])
 	previous_mute = frappe.flags.mute_messages
+	previous_ignore = frappe.flags.ignore_permissions
 	frappe.flags.mute_messages = True
+	kwargs = {"employee": employee, "posting_date": on_date}
+	if "ignore_permissions" in signature(make_salary_slip).parameters:
+		kwargs["ignore_permissions"] = True
+	else:
+		frappe.flags.ignore_permissions = True
 	try:
-		slip = make_salary_slip(
-			structure,
-			employee=employee,
-			posting_date=on_date,
-			ignore_permissions=True,
-		)
+		slip = make_salary_slip(structure, **kwargs)
 	finally:
 		frappe.flags.mute_messages = previous_mute
+		frappe.flags.ignore_permissions = previous_ignore
 		frappe.local.message_log = logged
 	return flt(slip.gross_pay)
 
