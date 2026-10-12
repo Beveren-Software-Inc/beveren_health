@@ -192,6 +192,9 @@ doc_events = {
 	"Salary Structure": {
 		"before_insert": "beveren_health.beveren_health.customize.salary_structure.before_insert"
 	},
+	"Salary Slip": {
+		"validate": "beveren_health.beveren_health.customize.salary_slip.set_close_observation_allowances"
+	},
 	"Sales Invoice": {
 		"validate": [
 			"beveren_health.beveren_health.customize.sales_invoice.validate_return_restrictions",
@@ -283,7 +286,11 @@ doc_events = {
 	},
 	# Header Patient (custom_patient) fills the patient on every time log row.
 	"Timesheet": {
-		"validate": "beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
+		"validate": [
+			"beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
+			"beveren_health.beveren_health.customize.timesheet.set_total_days",
+			"beveren_health.beveren_health.customize.timesheet.set_close_observation_costing",
+		],
 	},
 }
 
@@ -503,7 +510,17 @@ fixtures = [
 					"Timesheet Detail-custom_patient_name",
 					"Timesheet Detail-custom_patient",
 					"Timesheet Detail-custom_duration",
+					"Employee-custom_food_allowance_applicable",
+					"Activity Type-custom_is_close_observation",
+					"Timesheet-custom_close_observation_allowance",
+					"Timesheet-custom_close_observation_calculation",
+					"Timesheet-custom_total_days",
+					"Timesheet Detail-custom_daily_allowance",
+					"Timesheet Detail-custom_food_allowance",
 					"Stock Reconciliation Item-custom_stock_scanner",
+					"Salary Component-custom_close_observation",
+					"Salary Component-custom_daily_allowance",
+					"Salary Component-custom_food_allowance",
 				],
 			]
 		],
