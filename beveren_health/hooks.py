@@ -521,6 +521,7 @@ fixtures = [
 					"Salary Component-custom_close_observation",
 					"Salary Component-custom_daily_allowance",
 					"Salary Component-custom_food_allowance",
+					"Timesheet-custom_column_break_vzonk",
 				],
 			]
 		],
