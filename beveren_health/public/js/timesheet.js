@@ -20,6 +20,11 @@ frappe.ui.form.on("Timesheet", {
 		if (frm.__previous_custom_patient === undefined) {
 			frm.__previous_custom_patient = frm.doc.custom_patient || "";
 		}
+		// A save reloads the form. Do not start another costing preview from
+		// here: writing those amounts back marks a saved timesheet Not Saved.
+		clearTimeout(frm.__close_observation_timer);
+		update_total_days(frm);
+		show_close_observation_calculation(frm);
 	},
 
 	custom_patient(frm) {
@@ -28,11 +33,19 @@ frappe.ui.form.on("Timesheet", {
 		sync_time_logs_patient(frm, previous);
 	},
 
+	employee(frm) {
+		schedule_close_observation_cost(frm);
+	},
+
 	time_logs_add(frm, cdt, cdn) {
 		if (frm.doc.docstatus !== 0 || !frm.doc.custom_patient) {
 			return;
 		}
 		set_row_patient(cdt, cdn, frm.doc.custom_patient);
+	},
+
+	time_logs_remove(frm) {
+		update_total_days(frm);
 	},
 });
 
@@ -71,4 +84,178 @@ function set_row_patient(cdt, cdn, patient) {
 		return;
 	}
 	frappe.model.set_value(cdt, cdn, "custom_patient", patient);
+}
+
+function update_total_days(frm) {
+	if (!frm.doc || !frappe.meta.has_field(frm.doc.doctype, "custom_total_days")) {
+		return;
+	}
+	const total = count_total_days(frm);
+	if (flt(frm.doc.custom_total_days, 2) === total) {
+		return;
+	}
+	if (frm.doc.docstatus !== 0 || (!frm.is_new() && !frm.is_dirty())) {
+		frm.doc.custom_total_days = total;
+		frm.refresh_field("custom_total_days");
+		return;
+	}
+	frm.set_value("custom_total_days", total);
+}
+
+function count_total_days(frm) {
+	let hours = flt(frm.doc.total_hours);
+	if (!hours) {
+		(frm.doc.time_logs || []).forEach((row) => {
+			hours += flt(row.hours);
+		});
+	}
+	return flt(hours / 24, 2);
+}
+
+// Close Observation is costed as one allowance per row, from the employee's
+// salary structure, not as hours times a costing rate.
+const close_observation_activity_cache = {};
+
+frappe.ui.form.on("Timesheet Detail", {
+	activity_type(frm) {
+		schedule_close_observation_cost(frm);
+	},
+	from_time(frm) {
+		update_total_days(frm);
+		schedule_close_observation_cost(frm);
+	},
+	to_time(frm) {
+		update_total_days(frm);
+		schedule_close_observation_cost(frm);
+	},
+	hours(frm) {
+		update_total_days(frm);
+		schedule_close_observation_cost(frm);
+	},
+});
+
+function schedule_close_observation_cost(frm) {
+	if (frm.__close_observation_applying || frm.doc.docstatus !== 0) {
+		return;
+	}
+	clearTimeout(frm.__close_observation_timer);
+	frm.__close_observation_timer = setTimeout(() => {
+		refresh_close_observation_cost(frm);
+	}, 400);
+}
+
+async function refresh_close_observation_cost(frm) {
+	if (!frm.doc.employee || frm.__close_observation_applying) {
+		return;
+	}
+	const logs = frm.doc.time_logs || [];
+	const observed = [];
+	for (const row of logs) {
+		if (await activity_is_close_observation(row.activity_type)) {
+			observed.push(row);
+		}
+	}
+	if (!observed.length) {
+		return;
+	}
+
+	const time_logs = observed.map((row) => ({
+		name: row.name,
+		idx: row.idx,
+		activity_type: row.activity_type,
+		from_time: row.from_time,
+		to_time: row.to_time,
+		hours: row.hours,
+		costing_rate: row.costing_rate,
+		costing_amount: row.costing_amount,
+	}));
+
+	frappe.call({
+		method: "beveren_health.beveren_health.customize.timesheet.preview_close_observation_costing",
+		args: {
+			employee: frm.doc.employee,
+			time_logs,
+			exchange_rate: frm.doc.exchange_rate || 1,
+			currency: frm.doc.currency,
+		},
+		callback(r) {
+			const result = r.message || {};
+			show_close_observation_calculation(frm);
+			// Save already stored the costing. Applying the preview again would
+			// change the rate and flip the form back to Not Saved.
+			if (frm.doc.docstatus !== 0 || (!frm.is_new() && !frm.is_dirty())) {
+				return;
+			}
+			frm.__close_observation_applying = true;
+			(result.rows || [])
+				.filter((row) => row.applies)
+				.forEach((row) => {
+					const grid_row = (frm.doc.time_logs || []).find(
+						(log) => log.name === row.name
+					);
+					if (!grid_row) {
+						return;
+					}
+					set_row_if_changed(grid_row, "costing_rate", row.costing_rate);
+					set_row_if_changed(grid_row, "costing_amount", row.costing_amount);
+					set_row_if_changed(grid_row, "custom_daily_allowance", row.daily_allowance);
+					set_row_if_changed(grid_row, "custom_food_allowance", row.food_allowance);
+				});
+			if (
+				frappe.meta.has_field(frm.doc.doctype, "custom_close_observation_allowance") &&
+				flt(frm.doc.custom_close_observation_allowance) !==
+					flt(result.close_observation_allowance)
+			) {
+				frm.set_value(
+					"custom_close_observation_allowance",
+					result.close_observation_allowance || 0
+				);
+			}
+			setTimeout(() => {
+				frm.__close_observation_applying = false;
+			}, 500);
+		},
+	});
+}
+
+function set_row_if_changed(row, field, value) {
+	if (!frappe.meta.has_field(row.doctype, field)) {
+		return;
+	}
+	if (flt(row[field]) === flt(value)) {
+		return;
+	}
+	frappe.model.set_value(row.doctype, row.name, field, flt(value));
+}
+
+function show_close_observation_calculation(frm) {
+	if (frm.set_intro) {
+		frm.set_intro("");
+	}
+	if (frappe.meta.has_field(frm.doc.doctype, "custom_close_observation_calculation")) {
+		frm.set_df_property("custom_close_observation_calculation", "hidden", 1);
+	}
+}
+
+function activity_is_close_observation(activity_type) {
+	if (!activity_type) {
+		return Promise.resolve(false);
+	}
+	if (String(activity_type).trim().toLowerCase() === "close observation") {
+		return Promise.resolve(true);
+	}
+	if (Object.prototype.hasOwnProperty.call(close_observation_activity_cache, activity_type)) {
+		return Promise.resolve(close_observation_activity_cache[activity_type]);
+	}
+	return frappe.db
+		.get_value("Activity Type", activity_type, "custom_is_close_observation")
+		.then((r) => {
+			const flagged = !!(r && r.message && cint(r.message.custom_is_close_observation));
+			close_observation_activity_cache[activity_type] = flagged;
+			return flagged;
+		})
+		.catch(() => {
+			close_observation_activity_cache[activity_type] = false;
+			return false;
+		});
 }
