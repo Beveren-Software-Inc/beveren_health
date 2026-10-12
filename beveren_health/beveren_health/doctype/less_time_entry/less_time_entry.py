@@ -222,14 +222,20 @@ class LessTimeEntry(Document):
 		return applicable_daily_amount / standard_working_hours
 
 	def _make_salary_slip(self, salary_structure):
+		from inspect import signature
+
 		from hrms.payroll.doctype.salary_structure.salary_structure import make_salary_slip
 
-		return make_salary_slip(
-			salary_structure,
-			employee=self.employee,
-			ignore_permissions=True,
-			posting_date=self.start_date,
-		)
+		kwargs = {"employee": self.employee, "posting_date": self.start_date}
+		previous_ignore = frappe.flags.ignore_permissions
+		if "ignore_permissions" in signature(make_salary_slip).parameters:
+			kwargs["ignore_permissions"] = True
+		else:
+			frappe.flags.ignore_permissions = True
+		try:
+			return make_salary_slip(salary_structure, **kwargs)
+		finally:
+			frappe.flags.ignore_permissions = previous_ignore
 
 	def calculate_less_time_amount(
 		self, less_time_type, applicable_hourly_rate, less_time_duration, less_time_date
