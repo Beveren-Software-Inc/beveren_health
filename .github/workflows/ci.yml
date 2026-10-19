@@ -114,6 +114,19 @@ jobs:
         working-directory: /home/runner/frappe-bench
         run: |
           bench --site test_site set-config allow_tests true
+          # Mute outgoing email for the run: the test data bootstrap (the module level
+          # BootStrapTestData of erpnext/hrms/healthcare tests.utils) switches the Email
+          # Account HRMS ships - which has no SMTP server - on as the default outgoing
+          # account, and mail sent with `now=True` goes out on commit. On this fresh
+          # site that commit would abort the whole run with `OutgoingEmailError: Email
+          # Account not setup` from frappe.email.smtp.SMTPServer, which is raised while
+          # the bootstrap is imported, i.e. before a single test runs. Muted mail is
+          # queued as "Not Sent" instead.
+          # Set through the site config rather than only from the app's before_tests
+          # hook: the suites are collected - test modules are imported - before that
+          # hook runs, so a test module importing a bootstrap would be imported too
+          # early for the in-process flag. See beveren_health/install.py.
+          bench --site test_site set-config mute_emails 1
           bench --site test_site run-tests --app beveren_health
         env:
           TYPE: server
