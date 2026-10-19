@@ -11,6 +11,7 @@ class FullandFinalStatement:
 		self._validate_unique_fnf()
 		super().validate()
 
+	@frappe.whitelist()
 	def create_journal_entry(self):
 		# HRMS only tags the settlement Journal Entry with the Employee as party when a
 		# receivable row references an Employee Advance; the auto-generated outstanding
