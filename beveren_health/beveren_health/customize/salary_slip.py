@@ -6,9 +6,9 @@ from frappe.utils import add_months, cint, flt, getdate
 from hrms.payroll.doctype.salary_slip.salary_slip import get_salary_component_data
 
 from beveren_health.beveren_health.customize.timesheet import (
-	CLOSE_OBSERVATION_SALARY_THRESHOLD,
+	_food_allowance_applicable,
 	_is_close_observation,
-	food_allowance_for_days,
+	close_observation_amounts,
 	marked_salary_component,
 	total_days_from_hours,
 )
@@ -116,10 +116,11 @@ def apply_close_observation_allowances(doc, components: dict | None = None, time
 		frappe.throw(_("Tick Daily Allowance on the Salary Component used to calculate it."))
 
 	monthly_food = flt(components["food"].amount) if components["food"] else 0
+	food_applicable = _food_allowance_applicable(doc.employee) if doc.employee else False
 	totals = close_observation_component_totals(
 		timesheets,
 		_salary_excluding_close_observation(doc, components),
-		bool(monthly_food),
+		food_applicable,
 		monthly_food,
 	)
 	close_total = flt(totals["daily_allowance"]) + flt(totals["food_allowance"])
@@ -191,9 +192,10 @@ def close_observation_component_totals(
 ) -> dict:
 	"""Slip totals from the linked timesheets' Total Days.
 
-	Daily Allowance is 250 - total salary when salary is below 250.
-	Food Allowance is the Food Allowance component amount / days in the month,
-	times the timesheet Total Days.
+	Daily Allowance is (250 - total salary) / timesheet Total Days when salary
+	is below 250. Food Allowance is the Food Allowance component amount / days
+	in the month, times the timesheet Total Days, only when the employee allows
+	food on Close Observation. Close Observation = Daily + Food.
 	"""
 	grouped: dict[tuple[int, int], float] = {}
 	seen = set()
@@ -216,12 +218,17 @@ def close_observation_component_totals(
 	daily = 0.0
 	food = 0.0
 	for (year, month), days in grouped.items():
-		if days <= 0 or flt(total_salary) >= CLOSE_OBSERVATION_SALARY_THRESHOLD:
-			continue
-		daily += CLOSE_OBSERVATION_SALARY_THRESHOLD - flt(total_salary)
-		food += food_allowance_for_days(
-			calendar.monthrange(year, month)[1], days, food_applicable, monthly_food
+		amounts = close_observation_amounts(
+			total_salary,
+			days,
+			calendar.monthrange(year, month)[1],
+			food_applicable,
+			monthly_food,
 		)
+		if not amounts["applies"]:
+			continue
+		daily += flt(amounts["daily_allowance"])
+		food += flt(amounts["food_allowance"])
 	return {"daily_allowance": flt(daily), "food_allowance": flt(food)}
 
 
