@@ -46,11 +46,11 @@ class TestCloseObservationAmounts(UnitTestCase):
 	def test_slip_totals_one_observation_without_food(self):
 		from beveren_health.beveren_health.customize.salary_slip import close_observation_component_totals
 
-		# Salary 180, timesheet Total Days 4.42 in October. Daily = 250 - 180 = 70.
-		sheets = [{"name": "TS-1", "from_time": "2026-10-16 12:00:00", "total_days": 4.42}]
+		# Salary 180, Total Days 3. Daily = (250 - 180) / 3; food off → Close Observation ≈ 23.33.
+		sheets = [{"name": "TS-1", "from_time": "2026-10-16 12:00:00", "total_days": 3}]
 		totals = close_observation_component_totals(sheets, 180, False)
 
-		self.assertEqual(totals["daily_allowance"], 70)
+		self.assertAlmostEqual(totals["daily_allowance"], 70 / 3, places=6)
 		self.assertEqual(totals["food_allowance"], 0)
 
 	def test_slip_food_uses_timesheet_days(self):
@@ -59,5 +59,5 @@ class TestCloseObservationAmounts(UnitTestCase):
 		sheets = [{"name": "TS-1", "from_time": "2026-10-16 12:00:00", "total_days": 4.42}]
 		totals = close_observation_component_totals(sheets, 180, True, 50)
 
-		self.assertEqual(totals["daily_allowance"], 70)
+		self.assertAlmostEqual(totals["daily_allowance"], 70 / 4.42, places=6)
 		self.assertAlmostEqual(totals["food_allowance"], (50 / 31) * 4.42, places=6)

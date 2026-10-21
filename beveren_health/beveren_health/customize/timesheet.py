@@ -25,7 +25,8 @@ from frappe.utils import cint, flt, getdate
 # When the employee's total salary (gross from the assigned Salary Structure)
 # is below 250, the gap is spread across the close observation rows:
 #   daily allowance = (250 - total salary) / close observation days
-# Food, when the employee is marked applicable, is
+# Food is included only when Employee.custom_allow_food_allowance_on_close_observation
+# is ticked. Then food is:
 #   food component amount / days in the month * close observation days
 # The food amount is the Amount on the Salary Component ticked Food Allowance.
 # Close observation days are the timesheet Total Days (working hours / 24).
@@ -212,7 +213,7 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 
 	food_component = marked_salary_component("food")
 	monthly_food = flt(food_component.amount) if food_component else 0
-	food_applicable = bool(monthly_food)
+	food_applicable = _food_allowance_applicable(doc.employee)
 	grouped: dict[tuple[int, int], list] = defaultdict(list)
 	for row in observation_rows:
 		observed_on = _observation_date(row)
@@ -243,7 +244,8 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 			food_applicable,
 			monthly_food,
 		)
-		daily_total = flt(amounts["daily_allowance"]) * month_days
+		# Daily is already (250 - salary) / days; do not multiply by days again.
+		daily_total = flt(amounts["daily_allowance"])
 		food_total = flt(amounts["food_allowance"])
 		for row in month_rows:
 			if preview:
@@ -285,6 +287,14 @@ def _is_close_observation(activity_type: str | None) -> bool:
 	if not frappe.db.has_column("Activity Type", "custom_is_close_observation"):
 		return False
 	return bool(cint(frappe.db.get_value("Activity Type", activity_type, "custom_is_close_observation")))
+
+
+def _food_allowance_applicable(employee: str) -> bool:
+	"""Food is part of Close Observation only when this Employee checkbox is ticked."""
+	field = "custom_allow_food_allowance_on_close_observation"
+	if not frappe.db.has_column("Employee", field):
+		return False
+	return bool(cint(frappe.db.get_value("Employee", employee, field)))
 
 
 def _total_salary_from_structure(employee: str, on_date) -> float:
