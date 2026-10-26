@@ -4,3 +4,4 @@
 
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
+beveren_health.patches.v1_0.move_close_observation_food_allowance_to_timesheet

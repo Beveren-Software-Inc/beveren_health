@@ -512,7 +512,6 @@ fixtures = [
 					"Timesheet Detail-custom_patient_name",
 					"Timesheet Detail-custom_patient",
 					"Timesheet Detail-custom_duration",
-					"Employee-custom_food_allowance_applicable",
 					"Activity Type-custom_is_close_observation",
 					"Timesheet-custom_close_observation_allowance",
 					"Timesheet-custom_close_observation_calculation",
@@ -524,7 +523,7 @@ fixtures = [
 					"Salary Component-custom_daily_allowance",
 					"Salary Component-custom_food_allowance",
 					"Timesheet-custom_column_break_vzonk",
-					"Employee-custom_allow_food_allowance_on_close_observation",
+					"Timesheet-custom_allow_food_allowance_on_close_observation",
 				],
 			]
 		],

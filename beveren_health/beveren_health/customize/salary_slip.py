@@ -6,11 +6,11 @@ from frappe.utils import add_months, cint, flt, getdate
 from hrms.payroll.doctype.salary_slip.salary_slip import get_salary_component_data
 
 from beveren_health.beveren_health.customize.timesheet import (
-	_food_allowance_applicable,
 	_is_close_observation,
 	close_observation_amounts,
 	marked_salary_component,
 	total_days_from_hours,
+	total_days_from_time_logs,
 )
 
 
@@ -116,11 +116,9 @@ def apply_close_observation_allowances(doc, components: dict | None = None, time
 		frappe.throw(_("Tick Daily Allowance on the Salary Component used to calculate it."))
 
 	monthly_food = flt(components["food"].amount) if components["food"] else 0
-	food_applicable = _food_allowance_applicable(doc.employee) if doc.employee else False
 	totals = close_observation_component_totals(
 		timesheets,
 		_salary_excluding_close_observation(doc, components),
-		food_applicable,
 		monthly_food,
 	)
 	close_total = flt(totals["daily_allowance"]) + flt(totals["food_allowance"])
@@ -187,17 +185,17 @@ def _remove_component_rows(doc, names: set) -> bool:
 def close_observation_component_totals(
 	timesheets,
 	total_salary: float,
-	food_applicable: bool,
 	monthly_food: float = 0,
 ) -> dict:
 	"""Slip totals from the linked timesheets' Total Days.
 
-	Daily Allowance is (250 - total salary) / timesheet Total Days when salary
-	is below 250. Food Allowance is the Food Allowance component amount / days
-	in the month, times the timesheet Total Days, only when the employee allows
-	food on Close Observation. Close Observation = Daily + Food.
+	Daily Allowance is (250 - total salary) / days in the month * timesheet
+	Total Days when salary is below 250. Food Allowance is the Food Allowance
+	component amount / days in the month, times the Total Days of the
+	timesheets that tick Allow Food Allowance on Close Observation.
+	Close Observation = Daily + Food.
 	"""
-	grouped: dict[tuple[int, int], float] = {}
+	grouped: dict[tuple[int, int], dict] = {}
 	seen = set()
 	for sheet in timesheets or []:
 		key = sheet.get("name") or id(sheet)
@@ -208,22 +206,22 @@ def close_observation_component_totals(
 		if not observed_on:
 			continue
 		observed_on = getdate(observed_on)
-		days = flt(sheet.get("total_days"))
-		if not days:
-			days = total_days_from_hours(sheet.get("total_hours"))
-		grouped[(observed_on.year, observed_on.month)] = (
-			grouped.get((observed_on.year, observed_on.month), 0) + days
-		)
+		days = flt(sheet.get("total_days")) or total_days_from_hours(sheet.get("total_hours"))
+		bucket = grouped.setdefault((observed_on.year, observed_on.month), {"days": 0.0, "food_days": 0.0})
+		bucket["days"] += days
+		if cint(sheet.get("food_applicable")):
+			bucket["food_days"] += days
 
 	daily = 0.0
 	food = 0.0
-	for (year, month), days in grouped.items():
+	for (year, month), bucket in grouped.items():
 		amounts = close_observation_amounts(
 			total_salary,
-			days,
+			bucket["days"],
 			calendar.monthrange(year, month)[1],
-			food_applicable,
+			bool(bucket["food_days"]),
 			monthly_food,
+			food_days=bucket["food_days"],
 		)
 		if not amounts["applies"]:
 			continue
@@ -285,26 +283,36 @@ def _close_observation_timesheets(doc) -> list:
 		fields=["activity_type", "from_time", "to_time", "parent"],
 	)
 	observed = {}
+	observed_rows = {}
 	for log in logs:
 		if not _is_close_observation(log.activity_type):
 			continue
 		observed.setdefault(log.parent, log.from_time or log.to_time)
+		observed_rows.setdefault(log.parent, []).append(log)
 	if not observed:
 		return []
 
 	fields = ["name", "total_hours", "start_date"]
 	if frappe.db.has_column("Timesheet", "custom_total_days"):
 		fields.append("custom_total_days")
+	food_field = "custom_allow_food_allowance_on_close_observation"
+	if frappe.db.has_column("Timesheet", food_field):
+		fields.append(food_field)
 	sheets = frappe.get_all("Timesheet", filters={"name": ["in", list(observed)]}, fields=fields)
 	result = []
 	for sheet in sheets:
-		days = flt(sheet.get("custom_total_days")) or total_days_from_hours(sheet.get("total_hours"))
+		# Days the Close Observation rows touch, last day included, so a stored
+		# 29 for 21 Sep -> 20 Oct still costs as the 30 days it covers.
+		days = total_days_from_time_logs(observed_rows.get(sheet.name))
+		if not days:
+			days = flt(sheet.get("custom_total_days")) or total_days_from_hours(sheet.get("total_hours"))
 		result.append(
 			{
 				"name": sheet.name,
 				"from_time": observed.get(sheet.name) or sheet.start_date,
 				"total_days": days,
 				"total_hours": sheet.total_hours,
+				"food_applicable": bool(cint(sheet.get(food_field))),
 			}
 		)
 	return result
