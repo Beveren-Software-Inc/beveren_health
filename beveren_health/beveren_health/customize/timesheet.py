@@ -12,26 +12,31 @@ through the API, data import or any other server side script.
 
 from __future__ import annotations
 
-import calendar
 import json
-from collections import defaultdict
 from datetime import timedelta
 from inspect import signature
 
 import frappe
 from frappe import _
-from frappe.utils import cint, flt, getdate
+from frappe.utils import add_months, cint, flt, getdate, today
 
 # A close observation is costed as one allowance, not hours times a rate.
 # When the employee's total salary (gross from the assigned Salary Structure)
-# is below 250, the gap is earned per day of the month and paid for the days
-# actually worked as close observation:
-#   daily allowance = (250 - total salary) / days in month * close observation days
-# so a full month of close observation earns the whole gap.
+# is below 250, the gap is earned per day of the payroll period and paid for
+# the days actually worked as close observation:
+#   daily allowance = (250 - total salary) / days in period * close observation days
+# so a full payroll period of close observation earns the whole gap.
 # Food is included only when the Timesheet box
 # custom_allow_food_allowance_on_close_observation is ticked. Then food is:
-#   food component amount / days in the month * close observation days
+#   food component amount / days in the period * close observation days
 # The food amount is the Amount on the Salary Component ticked Food Allowance.
+#
+# The days in the period come from the Timesheet payroll period
+# (custom_payroll_start_date -> custom_payroll_end_date). Payroll normally runs
+# from the 21st of a month to the 20th of the next, so 21 Sep -> 20 Oct is one
+# period of 30 days. A period that spans two calendar months is costed as that
+# one block - the days are never split into a September and an October sum.
+#
 # Close observation days are the timesheet Total Days: every calendar day the
 # time logs touch, counting both the first and the last day (21 Sep -> 20 Oct
 # is 30 days, not 29). Working hours / 24 is only the fallback for a row that
@@ -62,6 +67,65 @@ def set_patient_on_time_logs(doc, method: str | None = None) -> None:
 
 
 HOURS_PER_DAY = 24
+
+# Payroll runs from the 21st of a month to the 20th of the next. Each Timesheet
+# stores its own period (custom_payroll_start_date / custom_payroll_end_date),
+# so a period that spans two calendar months is costed as the one block it is.
+PAYROLL_PERIOD_START_DAY = 21
+PAYROLL_PERIOD_END_DAY = 20
+
+
+def payroll_period_for_date(on_date) -> tuple:
+	"""The payroll period that contains ``on_date``: 21st -> 20th next month."""
+	on_date = getdate(on_date)
+	if on_date.day >= PAYROLL_PERIOD_START_DAY:
+		start = on_date.replace(day=PAYROLL_PERIOD_START_DAY)
+	else:
+		start = add_months(on_date.replace(day=1), -1).replace(day=PAYROLL_PERIOD_START_DAY)
+	end = add_months(start, 1).replace(day=PAYROLL_PERIOD_END_DAY)
+	return start, end
+
+
+def payroll_period_days(start_date, end_date, fallback_date=None) -> int:
+	"""Calendar days in the payroll period, first and last day included.
+
+	The period stored on the Timesheet wins. Sheets that predate the fields fall
+	back to the payroll period that contains ``fallback_date``.
+	"""
+	if start_date and end_date:
+		start, end = getdate(start_date), getdate(end_date)
+		if end < start:
+			start, end = end, start
+		return (end - start).days + 1
+	if fallback_date:
+		start, end = payroll_period_for_date(fallback_date)
+		return (end - start).days + 1
+	return 0
+
+
+def set_payroll_period(doc, method: str | None = None) -> None:
+	"""``validate`` hook: default the payroll period to 21st -> 20th next month.
+
+	The user may change either date; only an empty field is filled in.
+	"""
+	meta = getattr(doc, "meta", None)
+	if meta and not meta.has_field("custom_payroll_start_date"):
+		return
+	start = doc.get("custom_payroll_start_date")
+	end = doc.get("custom_payroll_end_date")
+	if start and end:
+		return
+	on_date = doc.get("start_date") or _first_time_log_date(doc.get("time_logs")) or today()
+	default_start, default_end = payroll_period_for_date(on_date)
+	if not start:
+		doc.custom_payroll_start_date = default_start
+	if not end:
+		doc.custom_payroll_end_date = default_end
+
+
+def _first_time_log_date(rows):
+	dates = [getdate(row.get("from_time")) for row in rows or [] if row.get("from_time")]
+	return min(dates) if dates else None
 
 
 def set_total_days(doc, method: str | None = None) -> None:
@@ -106,7 +170,7 @@ def total_days_from_time_logs(rows) -> float:
 def close_observation_amounts(
 	total_salary: float,
 	observation_days: float,
-	days_in_month: int,
+	period_days: int,
 	food_applicable: bool,
 	monthly_food: float = 0,
 	food_days: float | None = None,
@@ -115,12 +179,12 @@ def close_observation_amounts(
 
 	Applies only when total salary is below 250 and there is at least a fraction
 	of a close observation day. Daily Allowance is the salary gap earned per day
-	of the month, paid for the close observation days:
+	of the payroll period, paid for the close observation days:
 
-	    (250 - total salary) / days in month * close observation days
+	    (250 - total salary) / days in period * close observation days
 
 	Food is the Food Allowance component amount divided by the days in the
-	month, times the close observation days that allow food (``food_days``;
+	period, times the close observation days that allow food (``food_days``;
 	all observation days when it is not given).
 	"""
 	days = flt(observation_days)
@@ -130,15 +194,15 @@ def close_observation_amounts(
 		"food_allowance": 0.0,
 		"allowance": 0.0,
 	}
-	month_days = cint(days_in_month)
-	if days <= 0 or month_days <= 0:
+	days_in_period = cint(period_days)
+	if days <= 0 or days_in_period <= 0:
 		return empty
 	if flt(total_salary) >= CLOSE_OBSERVATION_SALARY_THRESHOLD:
 		return empty
 
-	daily = ((CLOSE_OBSERVATION_SALARY_THRESHOLD - flt(total_salary)) / month_days) * days
+	daily = ((CLOSE_OBSERVATION_SALARY_THRESHOLD - flt(total_salary)) / days_in_period) * days
 	food = food_allowance_for_days(
-		days_in_month,
+		days_in_period,
 		days if food_days is None else flt(food_days),
 		food_applicable,
 		monthly_food,
@@ -152,20 +216,15 @@ def close_observation_amounts(
 
 
 def food_allowance_for_days(
-	days_in_month: int,
+	period_days: int,
 	observation_days: float,
 	food_applicable: bool,
 	monthly_food: float = 0,
 ) -> float:
-	"""Food component amount / days in the month, times the timesheet's days."""
-	if (
-		not food_applicable
-		or cint(days_in_month) <= 0
-		or flt(observation_days) <= 0
-		or flt(monthly_food) <= 0
-	):
+	"""Food component amount / days in the payroll period, times the days."""
+	if not food_applicable or cint(period_days) <= 0 or flt(observation_days) <= 0 or flt(monthly_food) <= 0:
 		return 0.0
-	return flt((flt(monthly_food) / cint(days_in_month)) * flt(observation_days))
+	return flt((flt(monthly_food) / cint(period_days)) * flt(observation_days))
 
 
 def marked_salary_component(kind: str):
@@ -203,6 +262,8 @@ def preview_close_observation_costing(
 	exchange_rate: float | str | None = None,
 	currency: str | None = None,
 	food_applicable: bool | str | None = None,
+	payroll_start_date: str | None = None,
+	payroll_end_date: str | None = None,
 ) -> dict:
 	"""Costing preview for the desk form, using the same rules as validate."""
 	if isinstance(time_logs, str):
@@ -214,6 +275,8 @@ def preview_close_observation_costing(
 		currency=currency,
 		time_logs=[frappe._dict(row) for row in (time_logs or [])],
 		custom_allow_food_allowance_on_close_observation=cint(food_applicable),
+		custom_payroll_start_date=payroll_start_date,
+		custom_payroll_end_date=payroll_end_date,
 		doctype="Timesheet",
 	)
 	_apply_close_observation_costing(doc, preview=True)
@@ -259,15 +322,24 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 	food_component = marked_salary_component("food")
 	monthly_food = flt(food_component.amount) if food_component else 0
 	food_applicable = _food_allowance_applicable(doc)
-	grouped: dict[tuple[int, int], list] = defaultdict(list)
 	for row in observation_rows:
-		observed_on = _observation_date(row)
-		if not observed_on:
+		if not _observation_date(row):
 			frappe.throw(
 				_("Row {0}: From Time is required to cost Close Observation.").format(row.get("idx") or "")
 			)
-		grouped[(observed_on.year, observed_on.month)].append(row)
+	observed_on = _first_observation_date(observation_rows)
 
+	period_start = doc.get("custom_payroll_start_date")
+	period_end = doc.get("custom_payroll_end_date")
+	period_days = payroll_period_days(period_start, period_end, observed_on)
+	if not period_days:
+		frappe.throw(_("Set the Payroll Start Date and Payroll End Date to cost Close Observation."))
+
+	# The payroll period is one block. A period running 21 Sep -> 20 Oct is 30
+	# days of payroll, not a September sum plus an October sum. The salary is
+	# the one assigned on the day the observation is worked, so a Salary
+	# Structure Assignment that starts inside the period (1 Oct) still applies.
+	total_salary = _total_salary_from_structure(doc.employee, observed_on)
 	exchange_rate = flt(doc.get("exchange_rate")) or 1
 	allowance_total = 0.0
 
@@ -278,41 +350,35 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 		)
 	all_hours = sum(flt(row.get("hours")) for row in observation_rows) or 1
 
-	for (year, month), month_rows in grouped.items():
-		on_date = getdate(f"{year}-{month:02d}-01")
-		total_salary = _total_salary_from_structure(doc.employee, on_date)
-		days_in_month = calendar.monthrange(year, month)[1]
-		month_hours = sum(flt(row.get("hours")) for row in month_rows) or 1
-		month_days = sheet_days * (month_hours / all_hours) if len(grouped) > 1 else sheet_days
-		amounts = close_observation_amounts(
-			total_salary,
-			month_days,
-			days_in_month,
-			food_applicable,
-			monthly_food,
-		)
-		# Daily is already (250 - salary) / days in month * days; do not multiply by days again.
-		daily_total = flt(amounts["daily_allowance"])
-		food_total = flt(amounts["food_allowance"])
-		for row in month_rows:
-			if preview:
-				row._close_observation_applies = amounts["applies"]
-			if not amounts["applies"]:
-				_set_row_value(row, "custom_daily_allowance", 0, has_daily)
-				_set_row_value(row, "custom_food_allowance", 0, has_food)
-				continue
+	amounts = close_observation_amounts(
+		total_salary,
+		sheet_days,
+		period_days,
+		food_applicable,
+		monthly_food,
+	)
+	# Daily is already (250 - salary) / days in period * days; do not multiply by days again.
+	daily_total = flt(amounts["daily_allowance"])
+	food_total = flt(amounts["food_allowance"])
+	for row in observation_rows:
+		if preview:
+			row._close_observation_applies = amounts["applies"]
+		if not amounts["applies"]:
+			_set_row_value(row, "custom_daily_allowance", 0, has_daily)
+			_set_row_value(row, "custom_food_allowance", 0, has_food)
+			continue
 
-			hours = flt(row.get("hours")) or 1
-			share = hours / month_hours
-			amount = (daily_total * share) + (food_total * share)
-			rate = amount / hours
-			_set_money(row, "costing_amount", amount)
-			_set_money(row, "costing_rate", rate)
-			_set_money(row, "base_costing_amount", amount * exchange_rate)
-			_set_money(row, "base_costing_rate", rate * exchange_rate)
-			_set_row_value(row, "custom_daily_allowance", daily_total * share, has_daily)
-			_set_row_value(row, "custom_food_allowance", food_total * share, has_food)
-			allowance_total += flt(row.get("costing_amount"))
+		hours = flt(row.get("hours")) or 1
+		share = hours / all_hours
+		amount = (daily_total * share) + (food_total * share)
+		rate = amount / hours
+		_set_money(row, "costing_amount", amount)
+		_set_money(row, "costing_rate", rate)
+		_set_money(row, "base_costing_amount", amount * exchange_rate)
+		_set_money(row, "base_costing_rate", rate * exchange_rate)
+		_set_row_value(row, "custom_daily_allowance", daily_total * share, has_daily)
+		_set_row_value(row, "custom_food_allowance", food_total * share, has_food)
+		allowance_total += flt(row.get("costing_amount"))
 
 	if not preview:
 		doc.total_costing_amount = sum(flt(row.get("costing_amount")) for row in rows)
@@ -324,6 +390,11 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 def _observation_date(row):
 	value = row.get("from_time") or row.get("to_time")
 	return getdate(value) if value else None
+
+
+def _first_observation_date(rows):
+	dates = [value for value in (_observation_date(row) for row in rows) if value]
+	return min(dates) if dates else None
 
 
 def _is_close_observation(activity_type: str | None) -> bool:

@@ -23,6 +23,7 @@ frappe.ui.form.on("Timesheet", {
 		// A save reloads the form. Do not start another costing preview from
 		// here: writing those amounts back marks a saved timesheet Not Saved.
 		clearTimeout(frm.__close_observation_timer);
+		default_payroll_period(frm);
 		update_total_days(frm);
 		show_close_observation_calculation(frm);
 	},
@@ -88,6 +89,47 @@ function set_row_patient(cdt, cdn, patient) {
 		return;
 	}
 	frappe.model.set_value(cdt, cdn, "custom_patient", patient);
+}
+
+// Payroll normally runs from the 21st of a month to the 20th of the next. A new
+// Timesheet starts on the period that contains the day it is being written for,
+// and the user is free to change either date. The dates are what the Salary Slip
+// divides the close observation allowance by, so a period that spans two
+// calendar months (21 Sep -> 20 Oct) is costed as one period, not two months.
+function default_payroll_period(frm) {
+	if (!frm.is_new() || !frm.doc) {
+		return;
+	}
+	if (
+		!frappe.meta.has_field(frm.doc.doctype, "custom_payroll_start_date") ||
+		!frappe.meta.has_field(frm.doc.doctype, "custom_payroll_end_date")
+	) {
+		return;
+	}
+	if (frm.doc.custom_payroll_start_date || frm.doc.custom_payroll_end_date) {
+		return;
+	}
+	const on_date = frm.doc.start_date
+		? frappe.datetime.str_to_obj(frm.doc.start_date)
+		: frappe.datetime.str_to_obj(frappe.datetime.get_today());
+	const period = payroll_period_for_date(on_date);
+	frm.set_value("custom_payroll_start_date", frappe.datetime.obj_to_str(period.start));
+	frm.set_value("custom_payroll_end_date", frappe.datetime.obj_to_str(period.end));
+}
+
+function payroll_period_for_date(date) {
+	const start_day = 21;
+	const end_day = 20;
+	if (date.getDate() >= start_day) {
+		return {
+			start: new Date(date.getFullYear(), date.getMonth(), start_day),
+			end: new Date(date.getFullYear(), date.getMonth() + 1, end_day),
+		};
+	}
+	return {
+		start: new Date(date.getFullYear(), date.getMonth() - 1, start_day),
+		end: new Date(date.getFullYear(), date.getMonth(), end_day),
+	};
 }
 
 function update_total_days(frm) {
@@ -203,6 +245,8 @@ async function refresh_close_observation_cost(frm) {
 			exchange_rate: frm.doc.exchange_rate || 1,
 			currency: frm.doc.currency,
 			food_applicable: cint(frm.doc.custom_allow_food_allowance_on_close_observation),
+			payroll_start_date: frm.doc.custom_payroll_start_date,
+			payroll_end_date: frm.doc.custom_payroll_end_date,
 		},
 		callback(r) {
 			const result = r.message || {};

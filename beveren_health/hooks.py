@@ -287,6 +287,7 @@ doc_events = {
 	# Header Patient (custom_patient) fills the patient on every time log row.
 	"Timesheet": {
 		"validate": [
+			"beveren_health.beveren_health.customize.timesheet.set_payroll_period",
 			"beveren_health.beveren_health.customize.timesheet.set_patient_on_time_logs",
 			"beveren_health.beveren_health.customize.timesheet.set_total_days",
 			"beveren_health.beveren_health.customize.timesheet.set_close_observation_costing",
@@ -509,6 +510,8 @@ fixtures = [
 					"Stock Reconciliation-custom_auto_save_scan_interval",
 					"Timesheet-custom_patient_name",
 					"Timesheet-custom_patient",
+					"Timesheet-custom_payroll_start_date",
+					"Timesheet-custom_payroll_end_date",
 					"Timesheet Detail-custom_patient_name",
 					"Timesheet Detail-custom_patient",
 					"Timesheet Detail-custom_duration",
@@ -524,6 +527,8 @@ fixtures = [
 					"Salary Component-custom_food_allowance",
 					"Timesheet-custom_column_break_vzonk",
 					"Timesheet-custom_allow_food_allowance_on_close_observation",
+					"Timesheet-custom_payroll_end_date",
+					"Timesheet-custom_payroll_start_date",
 				],
 			]
 		],
