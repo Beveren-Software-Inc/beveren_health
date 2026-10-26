@@ -15,6 +15,7 @@ from __future__ import annotations
 import calendar
 import json
 from collections import defaultdict
+from datetime import timedelta
 from inspect import signature
 
 import frappe
@@ -23,13 +24,18 @@ from frappe.utils import cint, flt, getdate
 
 # A close observation is costed as one allowance, not hours times a rate.
 # When the employee's total salary (gross from the assigned Salary Structure)
-# is below 250, the gap is spread across the close observation rows:
-#   daily allowance = (250 - total salary) / close observation days
-# Food is included only when Employee.custom_allow_food_allowance_on_close_observation
-# is ticked. Then food is:
+# is below 250, the gap is earned per day of the month and paid for the days
+# actually worked as close observation:
+#   daily allowance = (250 - total salary) / days in month * close observation days
+# so a full month of close observation earns the whole gap.
+# Food is included only when the Timesheet box
+# custom_allow_food_allowance_on_close_observation is ticked. Then food is:
 #   food component amount / days in the month * close observation days
 # The food amount is the Amount on the Salary Component ticked Food Allowance.
-# Close observation days are the timesheet Total Days (working hours / 24).
+# Close observation days are the timesheet Total Days: every calendar day the
+# time logs touch, counting both the first and the last day (21 Sep -> 20 Oct
+# is 30 days, not 29). Working hours / 24 is only the fallback for a row that
+# has no From Time / To Time.
 # Costing amount on the row = daily allowance + that row's share of the food.
 CLOSE_OBSERVATION_SALARY_THRESHOLD = 250
 CLOSE_OBSERVATION_ACTIVITY = "close observation"
@@ -59,19 +65,42 @@ HOURS_PER_DAY = 24
 
 
 def set_total_days(doc, method: str | None = None) -> None:
-	"""``validate`` hook: total days are working hours divided by 24."""
+	"""``validate`` hook: Total Days counts every calendar day the time logs touch."""
 	meta = getattr(doc, "meta", None)
 	if meta and not meta.has_field("custom_total_days"):
 		return
-	hours = flt(doc.get("total_hours"))
-	if not hours:
-		hours = sum(flt(row.get("hours")) for row in doc.get("time_logs") or [])
-	doc.custom_total_days = total_days_from_hours(hours)
+	rows = doc.get("time_logs") or []
+	days = total_days_from_time_logs(rows)
+	if not days:
+		hours = flt(doc.get("total_hours")) or sum(flt(row.get("hours")) for row in rows)
+		days = total_days_from_hours(hours)
+	doc.custom_total_days = flt(days, 2)
 
 
 def total_days_from_hours(hours: float) -> float:
 	"""30 working hours is 1.25 days."""
 	return flt(flt(hours) / HOURS_PER_DAY, 2)
+
+
+def total_days_from_time_logs(rows) -> float:
+	"""Calendar days covered by the time logs, both the first and last day included.
+
+	A log running from 21 Sep 00:00 to 20 Oct 00:00 touches 30 dates, so it is
+	30 close observation days: the last day counts as well. Returns 0 when the
+	rows carry no From Time / To Time, so the caller can fall back to hours.
+	"""
+	days = set()
+	for row in rows or []:
+		start = row.get("from_time")
+		end = row.get("to_time") or start
+		if not start:
+			continue
+		start_date = getdate(start)
+		end_date = getdate(end)
+		if end_date < start_date:
+			start_date, end_date = end_date, start_date
+		days.update(start_date + timedelta(days=offset) for offset in range((end_date - start_date).days + 1))
+	return float(len(days))
 
 
 def close_observation_amounts(
@@ -80,13 +109,19 @@ def close_observation_amounts(
 	days_in_month: int,
 	food_applicable: bool,
 	monthly_food: float = 0,
+	food_days: float | None = None,
 ) -> dict:
-	"""Daily rate and the food total for a block of close observation days.
+	"""Daily total and the food total for a block of close observation days.
 
 	Applies only when total salary is below 250 and there is at least a fraction
-	of a close observation day. Food is the Food Allowance component amount
-	divided by the days in the month, times those days, and only when the
-	employee is marked for it.
+	of a close observation day. Daily Allowance is the salary gap earned per day
+	of the month, paid for the close observation days:
+
+	    (250 - total salary) / days in month * close observation days
+
+	Food is the Food Allowance component amount divided by the days in the
+	month, times the close observation days that allow food (``food_days``;
+	all observation days when it is not given).
 	"""
 	days = flt(observation_days)
 	empty = {
@@ -95,11 +130,19 @@ def close_observation_amounts(
 		"food_allowance": 0.0,
 		"allowance": 0.0,
 	}
-	if days <= 0 or flt(total_salary) >= CLOSE_OBSERVATION_SALARY_THRESHOLD:
+	month_days = cint(days_in_month)
+	if days <= 0 or month_days <= 0:
+		return empty
+	if flt(total_salary) >= CLOSE_OBSERVATION_SALARY_THRESHOLD:
 		return empty
 
-	daily = (CLOSE_OBSERVATION_SALARY_THRESHOLD - flt(total_salary)) / days
-	food = food_allowance_for_days(days_in_month, days, food_applicable, monthly_food)
+	daily = ((CLOSE_OBSERVATION_SALARY_THRESHOLD - flt(total_salary)) / month_days) * days
+	food = food_allowance_for_days(
+		days_in_month,
+		days if food_days is None else flt(food_days),
+		food_applicable,
+		monthly_food,
+	)
 	return {
 		"applies": True,
 		"daily_allowance": flt(daily),
@@ -159,6 +202,7 @@ def preview_close_observation_costing(
 	time_logs: str | list | None = None,
 	exchange_rate: float | str | None = None,
 	currency: str | None = None,
+	food_applicable: bool | str | None = None,
 ) -> dict:
 	"""Costing preview for the desk form, using the same rules as validate."""
 	if isinstance(time_logs, str):
@@ -169,6 +213,7 @@ def preview_close_observation_costing(
 		exchange_rate=flt(exchange_rate) or 1,
 		currency=currency,
 		time_logs=[frappe._dict(row) for row in (time_logs or [])],
+		custom_allow_food_allowance_on_close_observation=cint(food_applicable),
 		doctype="Timesheet",
 	)
 	_apply_close_observation_costing(doc, preview=True)
@@ -213,7 +258,7 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 
 	food_component = marked_salary_component("food")
 	monthly_food = flt(food_component.amount) if food_component else 0
-	food_applicable = _food_allowance_applicable(doc.employee)
+	food_applicable = _food_allowance_applicable(doc)
 	grouped: dict[tuple[int, int], list] = defaultdict(list)
 	for row in observation_rows:
 		observed_on = _observation_date(row)
@@ -226,9 +271,11 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 	exchange_rate = flt(doc.get("exchange_rate")) or 1
 	allowance_total = 0.0
 
-	sheet_days = flt(doc.get("custom_total_days"))
+	sheet_days = total_days_from_time_logs(observation_rows)
 	if not sheet_days:
-		sheet_days = total_days_from_hours(sum(flt(row.get("hours")) for row in observation_rows))
+		sheet_days = flt(doc.get("custom_total_days")) or total_days_from_hours(
+			sum(flt(row.get("hours")) for row in observation_rows)
+		)
 	all_hours = sum(flt(row.get("hours")) for row in observation_rows) or 1
 
 	for (year, month), month_rows in grouped.items():
@@ -244,7 +291,7 @@ def _apply_close_observation_costing(doc, preview: bool = False) -> None:
 			food_applicable,
 			monthly_food,
 		)
-		# Daily is already (250 - salary) / days; do not multiply by days again.
+		# Daily is already (250 - salary) / days in month * days; do not multiply by days again.
 		daily_total = flt(amounts["daily_allowance"])
 		food_total = flt(amounts["food_allowance"])
 		for row in month_rows:
@@ -289,12 +336,12 @@ def _is_close_observation(activity_type: str | None) -> bool:
 	return bool(cint(frappe.db.get_value("Activity Type", activity_type, "custom_is_close_observation")))
 
 
-def _food_allowance_applicable(employee: str) -> bool:
-	"""Food is part of Close Observation only when this Employee checkbox is ticked."""
-	field = "custom_allow_food_allowance_on_close_observation"
-	if not frappe.db.has_column("Employee", field):
+def _food_allowance_applicable(doc) -> bool:
+	"""Food is part of Close Observation only when the Timesheet box is ticked."""
+	meta = getattr(doc, "meta", None)
+	if meta and not meta.has_field("custom_allow_food_allowance_on_close_observation"):
 		return False
-	return bool(cint(frappe.db.get_value("Employee", employee, field)))
+	return bool(cint(doc.get("custom_allow_food_allowance_on_close_observation")))
 
 
 def _total_salary_from_structure(employee: str, on_date) -> float:

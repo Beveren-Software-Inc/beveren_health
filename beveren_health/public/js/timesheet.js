@@ -37,6 +37,10 @@ frappe.ui.form.on("Timesheet", {
 		schedule_close_observation_cost(frm);
 	},
 
+	custom_allow_food_allowance_on_close_observation(frm) {
+		schedule_close_observation_cost(frm);
+	},
+
 	time_logs_add(frm, cdt, cdn) {
 		if (frm.doc.docstatus !== 0 || !frm.doc.custom_patient) {
 			return;
@@ -103,6 +107,27 @@ function update_total_days(frm) {
 }
 
 function count_total_days(frm) {
+	// Every calendar day a time log touches counts, the last day included:
+	// 21 Sep 00:00 -> 20 Oct 00:00 is 30 days, not 29.
+	const days = new Set();
+	(frm.doc.time_logs || []).forEach((row) => {
+		if (!row.from_time) {
+			return;
+		}
+		const from = frappe.datetime.str_to_obj(row.from_time);
+		const to = row.to_time ? frappe.datetime.str_to_obj(row.to_time) : from;
+		const start = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+		const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+		const first = start <= end ? start : end;
+		const last = start <= end ? end : start;
+		for (let day = new Date(first); day <= last; day.setDate(day.getDate() + 1)) {
+			days.add(frappe.datetime.obj_to_str(day));
+		}
+	});
+	if (days.size) {
+		return days.size;
+	}
+	// No From Time / To Time on the rows: fall back to working hours / 24.
 	let hours = flt(frm.doc.total_hours);
 	if (!hours) {
 		(frm.doc.time_logs || []).forEach((row) => {
@@ -177,6 +202,7 @@ async function refresh_close_observation_cost(frm) {
 			time_logs,
 			exchange_rate: frm.doc.exchange_rate || 1,
 			currency: frm.doc.currency,
+			food_applicable: cint(frm.doc.custom_allow_food_allowance_on_close_observation),
 		},
 		callback(r) {
 			const result = r.message || {};
