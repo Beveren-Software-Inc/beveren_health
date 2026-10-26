@@ -1,5 +1,3 @@
-import calendar
-
 import frappe
 from frappe import _
 from frappe.utils import add_months, cint, flt, getdate
@@ -9,6 +7,7 @@ from beveren_health.beveren_health.customize.timesheet import (
 	_is_close_observation,
 	close_observation_amounts,
 	marked_salary_component,
+	payroll_period_days,
 	total_days_from_hours,
 	total_days_from_time_logs,
 )
@@ -189,13 +188,18 @@ def close_observation_component_totals(
 ) -> dict:
 	"""Slip totals from the linked timesheets' Total Days.
 
-	Daily Allowance is (250 - total salary) / days in the month * timesheet
-	Total Days when salary is below 250. Food Allowance is the Food Allowance
-	component amount / days in the month, times the Total Days of the
-	timesheets that tick Allow Food Allowance on Close Observation.
+	The days in the month are the days in the timesheet's payroll period
+	(``custom_payroll_start_date`` -> ``custom_payroll_end_date``). A period that
+	spans two calendar months (21 Sep -> 20 Oct) is costed as that one block; it
+	is never a September sum plus an October one.
+
+	Daily Allowance is (250 - total salary) / days in the payroll period * the
+	timesheet Total Days when salary is below 250. Food Allowance is the Food
+	Allowance component amount / days in the payroll period, times the Total
+	Days of the timesheets that tick Allow Food Allowance on Close Observation.
 	Close Observation = Daily + Food.
 	"""
-	grouped: dict[tuple[int, int], dict] = {}
+	grouped: dict[int, dict] = {}
 	seen = set()
 	for sheet in timesheets or []:
 		key = sheet.get("name") or id(sheet)
@@ -205,20 +209,26 @@ def close_observation_component_totals(
 		observed_on = sheet.get("from_time") or sheet.get("start_date")
 		if not observed_on:
 			continue
-		observed_on = getdate(observed_on)
 		days = flt(sheet.get("total_days")) or total_days_from_hours(sheet.get("total_hours"))
-		bucket = grouped.setdefault((observed_on.year, observed_on.month), {"days": 0.0, "food_days": 0.0})
+		period_days = payroll_period_days(
+			sheet.get("payroll_start_date"),
+			sheet.get("payroll_end_date"),
+			getdate(observed_on),
+		)
+		if not period_days:
+			continue
+		bucket = grouped.setdefault(period_days, {"days": 0.0, "food_days": 0.0})
 		bucket["days"] += days
 		if cint(sheet.get("food_applicable")):
 			bucket["food_days"] += days
 
 	daily = 0.0
 	food = 0.0
-	for (year, month), bucket in grouped.items():
+	for period_days, bucket in grouped.items():
 		amounts = close_observation_amounts(
 			total_salary,
 			bucket["days"],
-			calendar.monthrange(year, month)[1],
+			period_days,
 			bool(bucket["food_days"]),
 			monthly_food,
 			food_days=bucket["food_days"],
@@ -287,7 +297,10 @@ def _close_observation_timesheets(doc) -> list:
 	for log in logs:
 		if not _is_close_observation(log.activity_type):
 			continue
-		observed.setdefault(log.parent, log.from_time or log.to_time)
+		observed_on = getdate(log.from_time or log.to_time)
+		# The earliest Close Observation date is the date the slip costs from.
+		if log.parent not in observed or observed_on < observed[log.parent]:
+			observed[log.parent] = observed_on
 		observed_rows.setdefault(log.parent, []).append(log)
 	if not observed:
 		return []
@@ -295,6 +308,9 @@ def _close_observation_timesheets(doc) -> list:
 	fields = ["name", "total_hours", "start_date"]
 	if frappe.db.has_column("Timesheet", "custom_total_days"):
 		fields.append("custom_total_days")
+	for field in ("custom_payroll_start_date", "custom_payroll_end_date"):
+		if frappe.db.has_column("Timesheet", field):
+			fields.append(field)
 	food_field = "custom_allow_food_allowance_on_close_observation"
 	if frappe.db.has_column("Timesheet", food_field):
 		fields.append(food_field)
@@ -313,6 +329,8 @@ def _close_observation_timesheets(doc) -> list:
 				"total_days": days,
 				"total_hours": sheet.total_hours,
 				"food_applicable": bool(cint(sheet.get(food_field))),
+				"payroll_start_date": sheet.get("custom_payroll_start_date"),
+				"payroll_end_date": sheet.get("custom_payroll_end_date"),
 			}
 		)
 	return result
