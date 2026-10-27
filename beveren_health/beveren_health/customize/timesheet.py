@@ -106,7 +106,10 @@ def payroll_period_days(start_date, end_date, fallback_date=None) -> int:
 def set_payroll_period(doc, method: str | None = None) -> None:
 	"""``validate`` hook: default the payroll period to 21st -> 20th next month.
 
-	The user may change either date; only an empty field is filled in.
+	The period follows the first time log From Time (26 Jul -> 21 Jul -> 20 Aug),
+	then the sheet Start Date when there are no time logs yet, then today. It
+	only fills an empty field, so a period the user typed on the Timesheet is
+	kept.
 	"""
 	meta = getattr(doc, "meta", None)
 	if meta and not meta.has_field("custom_payroll_start_date"):
@@ -115,7 +118,7 @@ def set_payroll_period(doc, method: str | None = None) -> None:
 	end = doc.get("custom_payroll_end_date")
 	if start and end:
 		return
-	on_date = doc.get("start_date") or _first_time_log_date(doc.get("time_logs")) or today()
+	on_date = _first_time_log_date(doc.get("time_logs")) or doc.get("start_date") or today()
 	default_start, default_end = payroll_period_for_date(on_date)
 	if not start:
 		doc.custom_payroll_start_date = default_start

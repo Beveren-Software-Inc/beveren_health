@@ -14,6 +14,7 @@ frappe.ui.form.on("Timesheet", {
 		// Remember the patient the rows were last synced with, so that a header
 		// change only rewrites rows that were not given a patient of their own.
 		frm.__previous_custom_patient = frm.doc.custom_patient || "";
+		remember_payroll_period(frm);
 	},
 
 	refresh(frm) {
@@ -23,7 +24,8 @@ frappe.ui.form.on("Timesheet", {
 		// A save reloads the form. Do not start another costing preview from
 		// here: writing those amounts back marks a saved timesheet Not Saved.
 		clearTimeout(frm.__close_observation_timer);
-		default_payroll_period(frm);
+		remember_payroll_period(frm);
+		sync_payroll_period(frm);
 		update_total_days(frm);
 		show_close_observation_calculation(frm);
 	},
@@ -42,15 +44,26 @@ frappe.ui.form.on("Timesheet", {
 		schedule_close_observation_cost(frm);
 	},
 
+	// Typing a payroll date means the user is taking over the period: the
+	// automatic 21st -> 20th dates stop following the time logs from then on.
+	custom_payroll_start_date(frm) {
+		schedule_close_observation_cost(frm);
+	},
+
+	custom_payroll_end_date(frm) {
+		schedule_close_observation_cost(frm);
+	},
+
 	time_logs_add(frm, cdt, cdn) {
-		if (frm.doc.docstatus !== 0 || !frm.doc.custom_patient) {
-			return;
+		if (frm.doc.docstatus === 0 && frm.doc.custom_patient) {
+			set_row_patient(cdt, cdn, frm.doc.custom_patient);
 		}
-		set_row_patient(cdt, cdn, frm.doc.custom_patient);
+		sync_payroll_period(frm);
 	},
 
 	time_logs_remove(frm) {
 		update_total_days(frm);
+		sync_payroll_period(frm);
 	},
 });
 
@@ -91,13 +104,29 @@ function set_row_patient(cdt, cdn, patient) {
 	frappe.model.set_value(cdt, cdn, "custom_patient", patient);
 }
 
-// Payroll normally runs from the 21st of a month to the 20th of the next. A new
-// Timesheet starts on the period that contains the day it is being written for,
-// and the user is free to change either date. The dates are what the Salary Slip
-// divides the close observation allowance by, so a period that spans two
-// calendar months (21 Sep -> 20 Oct) is costed as one period, not two months.
-function default_payroll_period(frm) {
-	if (!frm.is_new() || !frm.doc) {
+// Payroll normally runs from the 21st of a month to the 20th of the next. The
+// payroll dates on a Timesheet follow the sheet's first From Time: a time log
+// that starts on 26 Jul puts the sheet in the 21 Jul -> 20 Aug period, and
+// moving that From Time to another month moves the dates with it. The dates are
+// what the Salary Slip divides the close observation allowance by, so a period
+// that spans two calendar months (21 Sep -> 20 Oct) is costed as one period,
+// not two months.
+//
+// The automatic dates only follow the time logs while they are still the
+// standard 21st -> 20th period. Once the user types their own payroll start or
+// end date, their dates are kept as they are.
+const PAYROLL_PERIOD_START_DAY = 21;
+const PAYROLL_PERIOD_END_DAY = 20;
+
+/**
+ * Fill the payroll dates from the earliest From Time.
+ *
+ * A date is written when it is empty, or when it still holds the value this
+ * function last wrote for the same period. A date the user typed is left alone,
+ * and the missing date is filled in around it.
+ */
+function sync_payroll_period(frm) {
+	if (!frm.doc || frm.doc.docstatus !== 0) {
 		return;
 	}
 	if (
@@ -106,29 +135,110 @@ function default_payroll_period(frm) {
 	) {
 		return;
 	}
-	if (frm.doc.custom_payroll_start_date || frm.doc.custom_payroll_end_date) {
+	const on_date = payroll_period_source_date(frm);
+	if (!on_date) {
 		return;
 	}
-	const on_date = frm.doc.start_date
-		? frappe.datetime.str_to_obj(frm.doc.start_date)
-		: frappe.datetime.str_to_obj(frappe.datetime.get_today());
 	const period = payroll_period_for_date(on_date);
-	frm.set_value("custom_payroll_start_date", frappe.datetime.obj_to_str(period.start));
-	frm.set_value("custom_payroll_end_date", frappe.datetime.obj_to_str(period.end));
+	const auto_start = frappe.datetime.obj_to_str(period.start);
+	const auto_end = frappe.datetime.obj_to_str(period.end);
+	const start = frm.doc.custom_payroll_start_date || "";
+	const end = frm.doc.custom_payroll_end_date || "";
+	const auto = frm.__payroll_period_auto;
+	const start_is_auto = !start || (!!auto && auto.start === start);
+	const end_is_auto = !end || (!!auto && auto.end === end);
+	if (!start_is_auto && !end_is_auto) {
+		// The user has taken over the period: do not move either date.
+		return;
+	}
+	if (start_is_auto) {
+		set_payroll_period_date(frm, "custom_payroll_start_date", auto_start);
+	}
+	if (end_is_auto) {
+		set_payroll_period_date(frm, "custom_payroll_end_date", auto_end);
+	}
+	// Only keep following the time logs while both dates are the standard ones.
+	const final_start = start_is_auto ? auto_start : start;
+	const final_end = end_is_auto ? auto_end : end;
+	frm.__payroll_period_auto =
+		final_start === auto_start && final_end === auto_end
+			? { start: auto_start, end: auto_end }
+			: undefined;
+}
+
+/**
+ * Remember whether the dates on the loaded document are the standard period.
+ * Only then may a From Time change move them again. A period the user typed
+ * (or that does not match the current From Time) is left alone.
+ */
+function remember_payroll_period(frm) {
+	if (!frm.doc || frm.doc.docstatus !== 0) {
+		frm.__payroll_period_auto = undefined;
+		return;
+	}
+	const start = frm.doc.custom_payroll_start_date || "";
+	const end = frm.doc.custom_payroll_end_date || "";
+	const on_date = payroll_period_source_date(frm);
+	if (!start || !end || !on_date) {
+		// Half filled (or empty) dates: sync_payroll_period completes them.
+		frm.__payroll_period_auto = undefined;
+		return;
+	}
+	const period = payroll_period_for_date(on_date);
+	const auto_start = frappe.datetime.obj_to_str(period.start);
+	const auto_end = frappe.datetime.obj_to_str(period.end);
+	frm.__payroll_period_auto =
+		start === auto_start && end === auto_end ? { start, end } : undefined;
+}
+
+/**
+ * The date the payroll period is derived from: the earliest From Time in the
+ * time logs, then the sheet Start Date, then today for a sheet being created.
+ */
+function payroll_period_source_date(frm) {
+	let earliest = null;
+	(frm.doc.time_logs || []).forEach((row) => {
+		if (!row.from_time) {
+			return;
+		}
+		const from_time = frappe.datetime.str_to_obj(row.from_time);
+		if (!from_time || isNaN(from_time.getTime())) {
+			return;
+		}
+		const day = new Date(from_time.getFullYear(), from_time.getMonth(), from_time.getDate());
+		if (!earliest || day < earliest) {
+			earliest = day;
+		}
+	});
+	if (earliest) {
+		return earliest;
+	}
+	if (frm.doc.start_date) {
+		return frappe.datetime.str_to_obj(frm.doc.start_date);
+	}
+	if (frm.is_new()) {
+		return frappe.datetime.str_to_obj(frappe.datetime.get_today());
+	}
+	return null;
+}
+
+function set_payroll_period_date(frm, field, value) {
+	if ((frm.doc[field] || "") === value) {
+		return;
+	}
+	frm.set_value(field, value);
 }
 
 function payroll_period_for_date(date) {
-	const start_day = 21;
-	const end_day = 20;
-	if (date.getDate() >= start_day) {
+	if (date.getDate() >= PAYROLL_PERIOD_START_DAY) {
 		return {
-			start: new Date(date.getFullYear(), date.getMonth(), start_day),
-			end: new Date(date.getFullYear(), date.getMonth() + 1, end_day),
+			start: new Date(date.getFullYear(), date.getMonth(), PAYROLL_PERIOD_START_DAY),
+			end: new Date(date.getFullYear(), date.getMonth() + 1, PAYROLL_PERIOD_END_DAY),
 		};
 	}
 	return {
-		start: new Date(date.getFullYear(), date.getMonth() - 1, start_day),
-		end: new Date(date.getFullYear(), date.getMonth(), end_day),
+		start: new Date(date.getFullYear(), date.getMonth() - 1, PAYROLL_PERIOD_START_DAY),
+		end: new Date(date.getFullYear(), date.getMonth(), PAYROLL_PERIOD_END_DAY),
 	};
 }
 
@@ -188,6 +298,7 @@ frappe.ui.form.on("Timesheet Detail", {
 		schedule_close_observation_cost(frm);
 	},
 	from_time(frm) {
+		sync_payroll_period(frm);
 		update_total_days(frm);
 		schedule_close_observation_cost(frm);
 	},
