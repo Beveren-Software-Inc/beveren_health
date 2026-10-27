@@ -77,6 +77,34 @@ class TestCloseObservationAmounts(UnitTestCase):
 		self.assertEqual(doc.custom_payroll_start_date, date(2026, 9, 21))
 		self.assertEqual(doc.custom_payroll_end_date, date(2026, 10, 20))
 
+	def test_payroll_period_follows_the_first_from_time(self):
+		# A time log starting 26 Jul belongs to 21 Jul -> 20 Aug.
+		doc = frappe._dict(
+			time_logs=[
+				frappe._dict(from_time="2026-07-26 08:00:00"),
+				frappe._dict(from_time="2026-08-02 08:00:00"),
+			]
+		)
+
+		set_payroll_period(doc)
+
+		self.assertEqual(doc.custom_payroll_start_date, date(2026, 7, 21))
+		self.assertEqual(doc.custom_payroll_end_date, date(2026, 8, 20))
+
+	def test_payroll_period_uses_the_earliest_from_time(self):
+		doc = frappe._dict(
+			start_date="2026-10-05",
+			time_logs=[
+				frappe._dict(from_time="2026-08-02 08:00:00"),
+				frappe._dict(from_time="2026-07-26 08:00:00"),
+			],
+		)
+
+		set_payroll_period(doc)
+
+		self.assertEqual(doc.custom_payroll_start_date, date(2026, 7, 21))
+		self.assertEqual(doc.custom_payroll_end_date, date(2026, 8, 20))
+
 	def test_timesheet_keeps_the_payroll_period_the_user_set(self):
 		doc = frappe._dict(
 			start_date="2026-10-05",
