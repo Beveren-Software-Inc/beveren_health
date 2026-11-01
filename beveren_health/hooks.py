@@ -434,14 +434,6 @@ extend_doctype_class = {
 fixtures = [
 	{"doctype": "TNA Template"},
 	{
-		# Employee IDs use the EMP-.###. series only (default, single option, field hidden)
-		"doctype": "Property Setter",
-		"filters": [
-			["doc_type", "=", "Employee"],
-			["field_name", "=", "naming_series"],
-		],
-	},
-	{
 		# Appraisal / feedback grids: bulk edit + dynamic row height. These were
 		# edited directly in the hrms app's DocType JSON, which loses them on any
 		# hrms upgrade; carried here as Property Setters instead.

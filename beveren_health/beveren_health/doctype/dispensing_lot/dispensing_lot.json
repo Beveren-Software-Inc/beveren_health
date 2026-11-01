@@ -21,6 +21,8 @@
   "uom",
   "status",
   "gtin",
+  "original_dispensing",
+  "split_from",
   "section_qty",
   "initial_qty",
   "remaining_qty",
@@ -160,10 +162,26 @@
    "fieldtype": "Table",
    "label": "Transactions",
    "options": "Dispensing Lot Transaction"
+  },
+  {
+   "description": "Original pack this lot came from. A partial transfer splits the pack; the new lot keeps the original pack here.",
+   "fieldname": "original_dispensing",
+   "fieldtype": "Link",
+   "label": "Original Dispensing",
+   "options": "Dispensing Lot",
+   "read_only": 1
+  },
+  {
+   "description": "Dispensing Lot this pack was split from when only part of the pack was transferred.",
+   "fieldname": "split_from",
+   "fieldtype": "Link",
+   "label": "Split From",
+   "options": "Dispensing Lot",
+   "read_only": 1
   }
  ],
  "links": [],
- "modified": "2026-08-27 09:54:12.737444",
+ "modified": "2026-11-01 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Beveren Health",
  "name": "Dispensing Lot",

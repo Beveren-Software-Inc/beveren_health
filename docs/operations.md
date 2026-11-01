@@ -29,10 +29,10 @@ Everything the app adds is re-applied on every `bench migrate`:
 
 * **Custom Fields / Property Setters** from `beveren_health/beveren_health/custom/*.json`
   (Frappe's `sync_customizations`).
-* **Fixtures** — `TNA Template`, the *Employee* naming-series Property Setter, the Appraisal /
-  feedback grid Property Setters and 47 scanning/label/GTIN Custom Fields. (Note:
-  `fixtures/property_setter.json` is currently empty — the Property Setters that matter live in
-  `custom/*.json`.)
+* **Fixtures** — `TNA Template`, the Appraisal / feedback grid Property Setters and 47
+  scanning/label/GTIN Custom Fields. (Note: `fixtures/property_setter.json` is currently empty —
+  the Property Setters that matter, including the *Employee* `naming_series` default/options,
+  live in `custom/*.json`.)
 * **`after_migrate` hooks** — HR workspace links, Klik POS artwork, the VAT custom fields and
   the Full-and-Final import helper (see [section 6](#6-full-and-final-import-helpers)).
 

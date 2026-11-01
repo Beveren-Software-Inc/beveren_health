@@ -10,6 +10,9 @@ from frappe.utils import cint, flt
 DISPENSING_LOT_FIELD = "custom_dispensing_lot"
 DISPENSING_UOM = "UNIT"
 
+# Float tolerance when comparing dispensing quantities (e.g. 9 UNIT of a 30 UNIT pack).
+QTY_TOLERANCE = 1e-6
+
 STOCK_DOC_CONFIG = {
 	"Purchase Receipt": {
 		"items_field": "items",
@@ -255,8 +258,53 @@ def _serials_from_stock_row(row):
 	return serials
 
 
+def _row_stock_qty(row):
+	"""Row quantity expressed in the stock UOM.
+
+	A Stock Entry line can be keyed in the dispensing UOM (e.g. 9 UNIT); Stock Entry then
+	stores the converted stock quantity in `transfer_qty` (0.3 PACK).  Purchase Receipt
+	lines carry `stock_qty`; Stock Reconciliation lines are already in the stock UOM.
+	"""
+	transfer_qty = flt(row.get("transfer_qty"))
+	if transfer_qty:
+		return flt(transfer_qty, 6)
+
+	stock_qty = flt(row.get("stock_qty"))
+	if stock_qty:
+		return flt(stock_qty, 6)
+
+	qty = flt(row.get("qty"))
+	if not qty:
+		return 0
+
+	conversion_factor = flt(row.get("conversion_factor")) or 1
+	return flt(qty * conversion_factor, 6)
+
+
+def _transfer_qty_for_serial(row, serial_no):
+	"""Dispensing qty (e.g. UNIT) a stock line moves for one of its dispensing lots.
+
+	Uses the same pack split and rounding as lot creation, so 0.3 PACK of a 30 UNIT pack
+	moves 9 UNIT — part of the pack, not the whole pack.
+	"""
+	serials = _serials_from_stock_row(row)
+	if not serials:
+		return 0
+
+	stock_qty = _row_stock_qty(row)
+	if stock_qty <= 0:
+		return 0
+
+	quantities = compute_dispensing_qty_per_serial(stock_qty, serials, item_code=row.get("item_code"))
+
+	try:
+		return flt(quantities[serials.index(serial_no)])
+	except (ValueError, IndexError):
+		return flt(quantities[0]) if quantities else 0
+
+
 def _lot_is_partially_consumed(lot):
-	"""True if any units were sold/consumed — full pack only may be transferred."""
+	"""True if any units were sold or consumed — the lot no longer holds a full pack."""
 	if lot.status == "Partially Sold":
 		return True
 
@@ -279,8 +327,13 @@ def _lot_is_partially_consumed(lot):
 	return issued > returned
 
 
-def _validate_lot_eligible_for_transfer(lot, serial_no):
-	"""Only full, unconsumed packs (Active, full remaining qty) may be transferred."""
+def _validate_lot_eligible_for_transfer(lot, serial_no, transfer_qty=None):
+	"""A lot may be transferred whole or in part, but never more than it still holds.
+
+	Part of a pack is allowed: the moved quantity is handed to a new dispensing lot at the
+	destination and the source lot keeps the balance.  Without `transfer_qty` only the
+	basic eligibility (a live lot with quantity left) is checked.
+	"""
 	if lot.status in ("Inactive", "Delivered"):
 		frappe.throw(
 			_("Dispensing Lot {0} ({1}) cannot be transferred (status: {2}).").format(
@@ -288,23 +341,48 @@ def _validate_lot_eligible_for_transfer(lot, serial_no):
 			)
 		)
 
-	if _lot_is_partially_consumed(lot):
+	remaining = flt(lot.remaining_qty)
+	if remaining <= 0:
+		frappe.throw(
+			_("Dispensing Lot {0} ({1}) has no quantity left to transfer.").format(lot.name, serial_no)
+		)
+
+	if transfer_qty is None:
+		return
+
+	transfer_qty = flt(transfer_qty)
+	if transfer_qty <= 0:
 		frappe.throw(
 			_(
-				"Dispensing Lot {0} ({1}) has been partially consumed and cannot be transferred. "
-				"Remaining {2} {3} of {4} {3}. Only a full pack with no sales may be moved."
+				"The quantity on this line does not move any of Dispensing Lot {0} ({1}). "
+				"It holds {2} {3}. Enter the quantity to move, e.g. 0.3 of the pack."
+			).format(lot.name, serial_no, remaining, lot.uom)
+		)
+
+	if transfer_qty > remaining + QTY_TOLERANCE:
+		frappe.throw(
+			_(
+				"This line moves {0} {1} of Dispensing Lot {2} ({3}), but only {4} {1} "
+				"are left in warehouse {5}."
 			).format(
+				flt(transfer_qty, 3),
+				lot.uom,
 				lot.name,
 				serial_no,
-				lot.remaining_qty,
-				lot.uom,
-				lot.initial_qty,
+				flt(remaining, 3),
+				lot.warehouse or _("N/A"),
 			)
 		)
 
 
 def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
-	"""Move an existing pack to the target warehouse, or create it there if missing."""
+	"""Move a pack to the target warehouse: the whole pack, or only the quantity moved.
+
+	When the quantity moved is the whole remaining pack, the lot itself follows the goods
+	to the destination.  When only part of the pack moves, the source lot keeps the
+	balance and a new lot is created at the destination (serial suffixed -1, -2, …) that
+	points back at the pack it was split from.
+	"""
 	dest_wh = row.get("t_warehouse")
 	source_wh = row.get("s_warehouse")
 
@@ -313,13 +391,14 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 			_("Target Warehouse is required on the row to transfer Dispensing Lot {0}").format(serial_no)
 		)
 
+	transfer_qty = flt(_transfer_qty_for_serial(row, serial_no))
+
 	lot_name = _get_lot_name_by_serial(serial_no)
 	if not lot_name:
 		# First time seeing this serial on transfer — create the lot at destination
-		return _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh)
+		return _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh, transfer_qty)
 
 	lot = frappe.get_doc("Dispensing Lot", lot_name)
-	_validate_lot_eligible_for_transfer(lot, serial_no)
 
 	if source_wh and lot.warehouse and lot.warehouse != source_wh:
 		frappe.throw(
@@ -328,14 +407,22 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 			)
 		)
 
+	_validate_lot_eligible_for_transfer(lot, serial_no, transfer_qty)
+
 	if _lot_has_reference_transaction(lot, doc.doctype, doc.name, "Transfer"):
 		return lot.name
+
+	posting_date = doc.get("posting_date") or frappe.utils.today()
+
+	if transfer_qty < flt(lot.remaining_qty) - QTY_TOLERANCE:
+		return _split_dispensing_lot_on_material_transfer(
+			doc, row, lot, serial_no, transfer_qty, dest_wh, source_wh, posting_date
+		)
 
 	lot.warehouse = dest_wh
 	if row.batch_no:
 		lot.batch_no = row.batch_no
 
-	posting_date = doc.get("posting_date") or frappe.utils.today()
 	_append_lot_transaction(
 		lot,
 		transaction_type="Transfer",
@@ -349,7 +436,115 @@ def _transfer_dispensing_lot_on_material_transfer(doc, row, serial_no):
 	return lot.name
 
 
-def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh):
+def _split_dispensing_lot_on_material_transfer(
+	doc, row, lot, serial_no, transfer_qty, dest_wh, source_wh, posting_date
+):
+	"""Move part of a pack to the destination as a new dispensing lot.
+
+	The moved quantity becomes the initial and remaining qty of the new lot; the source
+	lot records a Transfer row with that quantity, which takes it off its balance.
+	"""
+	transfer_qty = flt(transfer_qty)
+	if row.batch_no and lot.batch_no and row.batch_no != lot.batch_no:
+		frappe.throw(
+			_("Row {0}: Batch {1} does not match Dispensing Lot {2} (batch {3}).").format(
+				row.idx, row.batch_no, lot.name, lot.batch_no
+			)
+		)
+
+	child = frappe.get_doc(
+		{
+			"doctype": "Dispensing Lot",
+			"naming_series": "DL-.YYYY.-",
+			"item": lot.item,
+			"batch_no": lot.batch_no,
+			"warehouse": dest_wh,
+			"serial_no": _next_split_serial(lot.serial_no or serial_no),
+			"gtin": lot.get("gtin"),
+			"uom": lot.uom,
+			"stock_uom": lot.stock_uom,
+			"initial_qty": transfer_qty,
+			"remaining_qty": transfer_qty,
+			"status": "Active",
+			"source_doctype": doc.doctype,
+			"source_document": doc.name,
+			"original_dispensing": lot.get("original_dispensing") or lot.name,
+			"split_from": lot.name,
+		}
+	)
+	child.insert(ignore_permissions=True)
+
+	_append_lot_transaction(
+		child,
+		transaction_type="Transfer",
+		qty=0,
+		uom=child.uom,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+		posting_date=posting_date,
+		remarks=_("Split from Dispensing Lot {0} on transfer {1} to {2}").format(lot.name, doc.name, dest_wh),
+	)
+
+	_append_lot_transaction(
+		lot,
+		transaction_type="Transfer",
+		qty=transfer_qty,
+		uom=lot.uom,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+		posting_date=posting_date,
+		remarks=_("Split transfer {0}: {1} {2} moved to {3} as Dispensing Lot {4}").format(
+			doc.name, flt(transfer_qty, 3), lot.uom, dest_wh, child.name
+		),
+	)
+	return child.name
+
+
+def _next_split_serial(serial_no):
+	"""Next free suffix for a split lot: 250432210562644 → 250432210562644-1, -2, …"""
+	base = (serial_no or "").strip() or "DL"
+	index = 1
+	while index < 1000:
+		candidate = "{0}-{1}".format(base, index)
+		if not frappe.db.exists("Dispensing Lot", candidate) and not frappe.db.exists(
+			"Dispensing Lot", {"serial_no": candidate}
+		):
+			return candidate
+		index += 1
+
+	frappe.throw(_("Could not create a split serial for Dispensing Lot {0}.").format(base))
+
+
+def _has_doctype_field(doctype, fieldname):
+	"""Whether the column exists — keeps transfers working before `bench migrate`."""
+	try:
+		return frappe.db.has_column(doctype, fieldname)
+	except Exception:
+		return False
+
+
+def _split_children_of_lot(doc, lot):
+	"""Dispensing lots this document split off the given lot."""
+	filters = {
+		"source_doctype": doc.doctype,
+		"source_document": doc.name,
+		"split_from": lot.name,
+		"docstatus": ["<", 2],
+	}
+
+	fields = ["name", "serial_no", "initial_qty", "remaining_qty", "status", "warehouse"]
+	if _has_doctype_field("Dispensing Lot", "split_from"):
+		return frappe.get_all("Dispensing Lot", filters=filters, fields=fields)
+
+	if _has_doctype_field("Dispensing Lot", "original_dispensing"):
+		filters.pop("split_from")
+		filters["original_dispensing"] = lot.get("original_dispensing") or lot.name
+		return frappe.get_all("Dispensing Lot", filters=filters, fields=fields)
+
+	return []
+
+
+def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, source_wh, transfer_qty=0):
 	"""Create a Dispensing Lot at the transfer destination when the serial is new."""
 	if not row.item_code or not row.batch_no:
 		frappe.throw(
@@ -361,13 +556,15 @@ def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, sourc
 	_validate_stock_row_batch_item(row)
 
 	serials = _serials_from_stock_row(row)
-	row_stock_qty = flt(row.get("qty")) or len(serials) or 1
-	lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
+	lot_qty = flt(transfer_qty)
+	if not lot_qty:
+		row_stock_qty = _row_stock_qty(row) or len(serials) or 1
+		lot_quantities = compute_dispensing_qty_per_serial(row_stock_qty, serials, item_code=row.item_code)
 
-	try:
-		lot_qty = lot_quantities[serials.index(serial_no)]
-	except (ValueError, IndexError):
-		lot_qty = lot_quantities[0] if lot_quantities else 1
+		try:
+			lot_qty = lot_quantities[serials.index(serial_no)]
+		except (ValueError, IndexError):
+			lot_qty = lot_quantities[0] if lot_quantities else 1
 
 	_pack_size, dispensing_uom = get_pack_size_and_uom(row.item_code)
 	gtin = row.get("custom_gstin") or frappe.db.get_value("Item", row.item_code, "custom_gtin_number")
@@ -405,13 +602,19 @@ def _create_missing_lot_on_material_transfer(doc, row, serial_no, dest_wh, sourc
 
 
 def _reverse_material_transfer_dispensing_lots(doc):
-	"""On cancel of Material Transfer, move lots back to source warehouse (no Out/In)."""
+	"""On cancel of Material Transfer, move lots back to source warehouse (no Out/In).
+
+	A partial transfer split the pack: the split lot is merged back into the lot it came
+	from and removed, so the source lot holds its quantity again.
+	"""
+	posting_date = doc.get("posting_date") or frappe.utils.today()
+
 	for row in doc.get("items") or []:
 		serials = _serials_from_stock_row(row)
 		source_wh = row.get("s_warehouse")
 		dest_wh = row.get("t_warehouse")
 
-		if not serials or not source_wh:
+		if not serials:
 			continue
 
 		for serial in serials:
@@ -420,7 +623,9 @@ def _reverse_material_transfer_dispensing_lots(doc):
 				continue
 
 			lot = frappe.get_doc("Dispensing Lot", lot_name)
-			if not dest_wh or lot.warehouse != dest_wh:
+			_reverse_split_transfer(doc, lot, source_wh, posting_date)
+
+			if not source_wh or not dest_wh or lot.warehouse != dest_wh:
 				continue
 
 			cancel_remark = _("Cancelled transfer {0} — returned to {1}").format(doc.name, source_wh)
@@ -433,7 +638,6 @@ def _reverse_material_transfer_dispensing_lots(doc):
 				continue
 
 			lot.warehouse = source_wh
-			posting_date = doc.get("posting_date") or frappe.utils.today()
 			_append_lot_transaction(
 				lot,
 				transaction_type="Transfer",
@@ -444,6 +648,71 @@ def _reverse_material_transfer_dispensing_lots(doc):
 				posting_date=posting_date,
 				remarks=cancel_remark,
 			)
+
+
+def _reverse_split_transfer(doc, lot, source_wh, posting_date):
+	"""Merge the lots this document split off `lot` back into it."""
+	split_rows = [
+		row
+		for row in lot.transactions
+		if row.transaction_type == "Transfer" and row.reference_name == doc.name and flt(row.qty) > 0
+	]
+	if not split_rows:
+		return
+
+	split_qty = sum(flt(row.qty) for row in split_rows)
+	children = _split_children_of_lot(doc, lot)
+
+	for child in children:
+		child_lot = frappe.get_doc("Dispensing Lot", child.name)
+		if _split_lot_was_used(child_lot, doc):
+			frappe.throw(
+				_(
+					"{0} cannot be cancelled: the {1} {2} split off Dispensing Lot {3} into "
+					"Dispensing Lot {4} has already been used. Reverse those documents first."
+				).format(
+					doc.name,
+					flt(split_qty, 3),
+					lot.uom,
+					lot.name,
+					child_lot.name,
+				)
+			)
+
+	for child in children:
+		frappe.delete_doc("Dispensing Lot", child.name, ignore_permissions=True, force=True)
+
+	for row in split_rows:
+		lot.remove(row)
+
+	# Balance comes back from the split rows; the remark keeps the audit trail.
+	_append_lot_transaction(
+		lot,
+		transaction_type="Transfer",
+		qty=0,
+		uom=lot.uom,
+		reference_doctype=doc.doctype,
+		reference_name=doc.name,
+		posting_date=posting_date,
+		remarks=_("Cancelled transfer {0} — split of {1} {2} reversed, back in {3}").format(
+			doc.name, flt(split_qty, 3), lot.uom, source_wh or lot.warehouse or "—"
+		),
+	)
+
+
+def _split_lot_was_used(lot, doc):
+	"""True when a split lot was moved, consumed or counted before this cancel."""
+	if flt(lot.remaining_qty) != flt(lot.initial_qty):
+		return True
+	if (lot.status or "Active") != "Active":
+		return True
+
+	for row in lot.transactions:
+		if row.reference_doctype == doc.doctype and row.reference_name == doc.name:
+			continue
+		return True
+
+	return False
 
 
 def validate_stock_document_dispensing_lots(doc, method=None):
@@ -488,7 +757,7 @@ def _stock_entry_line_needs_dispensing_lot(doc, row):
 
 
 def validate_stock_entry_dispensing_lots(doc, method=None):
-	"""Require lots on flagged items; block partial pack transfer when lot already exists."""
+	"""Require lots on flagged items; validate the quantity each lot moves on transfer."""
 	if is_dispensing_lot_validation_enabled("Stock Entry"):
 		for row in doc.get("items") or []:
 			if not row.item_code:
@@ -503,13 +772,23 @@ def validate_stock_entry_dispensing_lots(doc, method=None):
 		if not item_requires_dispensing_lot(row.item_code):
 			continue
 
+		source_wh = row.get("s_warehouse")
 		for serial in _serials_from_stock_row(row):
 			lot_name = _get_lot_name_by_serial(serial)
 			if not lot_name:
 				# Missing lot will be created on submit at the target warehouse
 				continue
+
 			lot = frappe.get_doc("Dispensing Lot", lot_name)
-			_validate_lot_eligible_for_transfer(lot, serial)
+
+			if source_wh and lot.warehouse and lot.warehouse != source_wh:
+				frappe.throw(
+					_(
+						"Row {0}: Dispensing Lot {1} ({2}) is in warehouse {3}, not source warehouse {4}."
+					).format(row.idx, lot.name, serial, lot.warehouse, source_wh)
+				)
+
+			_validate_lot_eligible_for_transfer(lot, serial, _transfer_qty_for_serial(row, serial))
 
 
 # ─── Zeroed batches ──────────────────────────────────────────────────────────────
