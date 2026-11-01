@@ -15,7 +15,7 @@ Technical map of what `beveren_health` wires into Frappe / ERPNext / HRMS / Heal
 | `doc_events` | see below | Server-side business logic |
 | `scheduler_events` | daily / weekly / `hourly_long` | Expiry movement, document-expiry and probation reminders, last-sync refresh |
 | `extend_doctype_class` | 5 doctypes | Class overrides (section 4) |
-| `fixtures` | 4 entries | TNA Template, Employee naming-series Property Setter, appraisal-grid Property Setters, 47 scanning/label Custom Fields |
+| `fixtures` | 3 entries | TNA Template, appraisal-grid Property Setters, 47 scanning/label Custom Fields (the Employee `naming_series` is applied from `custom/employee.json`, not fixtures) |
 | `extend_bootinfo` | **commented out** | Healthcare-only desk for clinical roles — see [operations.md § 5.3](../operations.md#53-desk-sidebar-restriction-for-clinical-roles) |
 
 ### `doc_events`
@@ -207,7 +207,6 @@ Submittable doctypes are marked **(S)**; the child tables have no autoname.
 | Fixture | Content |
 | --- | --- |
 | `TNA Template` | Training assessment templates |
-| `Property Setter` (Employee) | `naming_series` default/options only (`S.###.`) |
 | `Property Setter` (Appraisal Goal / Appraisal Template Goal / Employee Feedback Rating) | `allow_bulk_edit`, `row_format` for the appraisal grids |
 | `Custom Field` | 47 rows: scanner / lot / GTIN / label / auto-save fields on Purchase Receipt, Stock Entry, Stock Reconciliation, Delivery Note, Sales Invoice, Serial No, Item Barcode, Batch, Cost Center, Warehouse and Timesheet |
 

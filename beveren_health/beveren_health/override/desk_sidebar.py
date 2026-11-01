@@ -118,39 +118,27 @@ def _rooted_at(icon, by_label, keep_roots):
 
 
 def set_klik_pos_workspace_icon():
-	"""Apply our custom Klik POS artwork in both places the desk shows it.
+	"""Point the Klik POS workspace at our stroke glyph, so it matches the app tile.
 
-	1. The desktop grid tile is a ``Desktop Icon`` of type "App" that renders ``logo_url`` as an
-	   image — this is what users actually see, so we repoint it at our shipped SVG.
-	2. The Klik POS workspace's ``icon`` field (sidebar/card) is pointed at the matching stroke
-	   glyph ``#icon-klik-pos`` from ``beveren_health/public/icons.svg`` (loaded via
-	   ``app_include_icons``) so the two stay visually consistent.
+	The tile itself is *not* touched here any more: klik_pos ships its own square icon
+	(``klik_pos/public/images/klik_pos_icon.svg``, exported through its ``add_to_apps_screen``
+	hook, plus the ``solid``/``subtle`` grid files) and repairs its ``Desktop Icon`` row on its
+	own ``after_migrate``. Writing ``logo_url`` from this app only made the two disagree, and on
+	sites that migrate in install order this app's ``after_migrate`` ran last and won.
 
-	Idempotent; safe to run on every ``after_migrate``. Lets ``modified`` bump so the desk's
-	client-side caches (keyed on that timestamp) actually refresh.
+	Idempotent; safe to run on every ``after_migrate``.
 	"""
-	changed = False
-
-	# The ?v= token is a cache-buster: /assets files are served with long cache headers, so a
-	# colour/content change to the same filename would otherwise keep serving the stale image.
-	# Bump this token whenever klik_pos_icon.svg changes.
-	logo_url = "/assets/beveren_health/images/klik_pos_icon.svg?v=2"
-	desktop_icon = "KLiK PoS"
-	if frappe.db.exists("Desktop Icon", desktop_icon):
-		if frappe.db.get_value("Desktop Icon", desktop_icon, "logo_url") != logo_url:
-			frappe.db.set_value("Desktop Icon", desktop_icon, "logo_url", logo_url)
-			changed = True
-
 	workspace, icon = "Klik POS", "klik-pos"
-	if frappe.db.exists("Workspace", workspace):
-		if frappe.db.get_value("Workspace", workspace, "icon") != icon:
-			frappe.db.set_value("Workspace", workspace, "icon", icon)
-			changed = True
+	if not frappe.db.exists("Workspace", workspace):
+		return
 
-	if changed:
-		frappe.db.commit()
-		# Desktop icons are cached per user; drop it so the new artwork boots.
-		frappe.cache.delete_key("desktop_icons")
+	if frappe.db.get_value("Workspace", workspace, "icon") == icon:
+		return
+
+	frappe.db.set_value("Workspace", workspace, "icon", icon)
+	frappe.db.commit()
+	# Desktop icons are cached per user; drop it so the new artwork boots.
+	frappe.cache.delete_key("desktop_icons")
 
 
 def create_restricted_roles():

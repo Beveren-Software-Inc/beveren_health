@@ -222,13 +222,13 @@ dispensing lots.
 | Situation | Behaviour |
 | --- | --- |
 | Item has **Has Dispense Lot** and the line has no lot | Blocked on submit, on the document types enabled in Dispensing Setting |
-| **Material Transfer** of a pack that was already partly consumed | Blocked — only *full, unconsumed* packs may be transferred |
+| **Material Transfer** of a pack that was already partly consumed, or of only part of a pack | Allowed — the moved quantity goes to a **new lot** at the destination (serial suffixed `-1`, `-2`, …) that points back at the pack (`Split From`); the source lot keeps the balance and turns `Partially Sold`. Transferring the **whole remaining** pack moves the lot itself |
 | Selling a **full pack** (stock UOM) after units were sold from it | Blocked — only unit (dispensing UOM) sales are allowed for the remainder |
 | Several lots on one invoice line | Supported: the line quantity is shared out across the lots in order, each filled up to its remaining quantity |
 | Cancelling a Purchase Receipt / Stock Entry / Stock Reconciliation | The lots that document introduced are posted **Out** for their remaining quantity, so the lot goes to zero and becomes `Inactive` |
 | A Stock Reconciliation line counting a batch **down to zero** | Every dispensing lot of that item + batch in the document's warehouse is posted **Out** for its remaining quantity, so the lot becomes `Inactive` and can no longer be scanned, transferred or sold. **Cancelling** the reconciliation posts the same quantity **back** (`In`) and the lots are dispensable again |
 | A zeroed lot is received again (Purchase Receipt / Stock Entry / Stock Reconciliation with the same serial) | The lot is **reactivated** with the received quantity and keeps its history |
-| Cancelling a Material Transfer | Lots are **moved back** to the source warehouse (no Out/In entries) |
+| Cancelling a Material Transfer | Whole-pack moves: the lot is **moved back** to the source warehouse (no Out/In entries). Partial moves: the split lot is **merged back** into the lot it came from and deleted. If the split lot was already used (sold, moved or counted) the cancel is **blocked** — reverse those documents first |
 | Return (credit note / return DN) | Lots on the returned rows are **restored** (In). If the return rows carry no lot, the app inherits the lots from the original document row automatically, in the form and on submit |
 | Manual correction needed | Open the Dispensing Lot and use **Add Transaction** (`...doctype.dispensing_lot.add_transaction`), or the Stock Reconciliation actions below |
 
@@ -236,9 +236,16 @@ dispensing lots.
 
 Fields: *Item*, *Item Name*, *Batch*, *Warehouse*, *Source DocType* / *Source Document*,
 *Serial No* (the document name — lots are auto-named by serial), *GTIN*, *Stock UOM*,
-*Dispensing UOM*, *Status*, *Initial Qty*, *Remaining Qty* and the **Transactions** table
-(*Posting Date*, *Type* `Out / In / Transfer`, *Qty*, *UOM*, *Reference DocType*,
-*Reference Name*, *Remarks*).
+*Dispensing UOM*, *Status*, *Initial Qty*, *Remaining Qty*, *Original Dispensing*
+(the pack a split lot came from) and *Split From* (the lot this one was split off), plus the
+**Transactions** table (*Posting Date*, *Type* `Out / In / Transfer`, *Qty*, *UOM*,
+*Reference DocType*, *Reference Name*, *Remarks*).
+
+A partial Material Transfer creates a second lot for the same physical pack. The serial of the
+new lot is the original serial with a `-1` (`-2`, …) suffix, so the pack history stays
+together: *Split From* points at the source lot and *Original Dispensing* at the first lot of
+the pack. A `Transfer` row with a quantity means part of the pack left this lot; a `Transfer`
+row with qty `0` means the lot itself moved to another warehouse.
 
 ---
 
@@ -260,8 +267,13 @@ Fields: *Item*, *Item Name*, *Batch*, *Warehouse*, *Source DocType* / *Source Do
 * Header scanner `custom_custom_scanner` and a row `Scanner` column, same behaviour as the
   Purchase Receipt.
 * Material Issue / Material Receipt consume and create lots like a receipt.
-* **Material Transfer** moves whole packs only: the lot follows the pack to the destination
-  warehouse (and is created there if the serial was new); cancelling the entry moves it back.
+* **Material Transfer** moves whole packs or part of a pack. Enter the quantity you move on the
+  line (e.g. `0.3` of a pack, or `9` units) and the lot follows the goods: the whole pack moves
+  when the line takes everything the lot still holds, otherwise a **new dispensing lot** is
+  created at the destination with the moved quantity and the serial suffixed `-1` (`-2`, …),
+  while the source lot keeps the balance. A serial that is new to the system gets a lot created
+  at the destination. Cancelling the entry moves the pack back, or merges and removes the split
+  lot — as long as that split lot has not been used yet.
 * **Actions → Batch Label Print** and **Actions → Update Batch Expiry Dates**.
 
 ### 5.3 Stock Reconciliation
@@ -415,7 +427,8 @@ returns sample rows). Use **Dispensing Lot Ledger** instead until it is implemen
 | Batch created with a suffixed name (`BATCH123_ITEM-001`) | The same batch number already exists for a **different item**; the original number is kept in *Original Batch ID*. |
 | Row quantity grows unexpectedly | Scanning the same batch again appends a lot and recalculates the quantity — that is by design; remove the extra lots from the field if it was a double scan. |
 | *Dispensing lot is mandatory* error | Item has **Has Dispense Lot** and the document type's toggle is on in **Dispensing Setting** — scan the pack or pick the lot. |
-| Cannot transfer a pack | The pack was already partly consumed; only full packs can be transferred. |
+| Cannot transfer a pack | The line moves more than the lot still holds, or the lot is `Inactive` / `Delivered`. Check *Remaining Qty* on the lot and enter the quantity you move (part of a pack is fine). |
+| *… split off Dispensing Lot … has already been used* on cancel | The split lot was sold, moved or counted after the transfer. Reverse those documents before cancelling the Material Transfer. |
 | Cannot sell a full pack | The pack is partly sold — sell the remaining units in the dispensing UOM or pick another pack. |
 | Labels print without a barcode | The batch barcode could not be generated (missing `python-barcode`); install it and reprint. |
 | Labels show the wrong branch | Set *Branch (Cost Center)* in the print dialog; the branch line uses the cost center's `custom_cr_name` (or its name). |

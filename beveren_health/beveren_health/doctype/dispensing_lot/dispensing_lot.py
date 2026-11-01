@@ -55,19 +55,24 @@ class DispensingLot(Document):
 
 		issued = 0
 		returned = 0
+		transferred = 0
 
 		for row in self.transactions:
-			if row.transaction_type == "Transfer":
-				continue
-			if row.uom == self.stock_uom and flt(row.qty) >= 1:
-				continue
 			qty = flt(row.qty)
+			if row.transaction_type == "Transfer":
+				# A split transfer moves part of the pack to another dispensing lot, so the
+				# quantity that left stays on the row and comes off this lot's balance.  A
+				# whole-pack transfer moves the lot itself and carries qty 0.
+				transferred += qty
+				continue
+			if row.uom == self.stock_uom and qty >= 1:
+				continue
 			if row.transaction_type == "In":
 				returned += qty
 			elif row.transaction_type == "Out":
 				issued += qty
 
-		self.remaining_qty = flt(self.initial_qty) - issued + returned
+		self.remaining_qty = flt(self.initial_qty) - issued + returned - transferred
 
 		if self.remaining_qty < 0:
 			lot_label = self.name or _("New Dispensing Lot")
@@ -76,7 +81,7 @@ class DispensingLot(Document):
 				_(
 					"Dispensing Lot {0} failed validation for item {1} "
 					"(serial/lot: {2}, batch: {3}). Remaining qty cannot be negative. "
-					"Issued {4}, returned {5}, initial {6}."
+					"Issued {4}, returned {5}, split-transferred {6}, initial {7}."
 				).format(
 					lot_label,
 					self.item or _("N/A"),
@@ -84,6 +89,7 @@ class DispensingLot(Document):
 					self.batch_no or _("N/A"),
 					issued,
 					returned,
+					transferred,
 					self.initial_qty,
 				)
 			)
@@ -114,11 +120,15 @@ class DispensingLot(Document):
 			self._restore_serial_no_if_active()
 			return
 
-		if self._has_net_issue():
+		if self._has_net_issue() or self._has_split_transfer():
 			self.status = "Partially Sold"
 		else:
 			self.status = "Active"
 			self._restore_serial_no_if_active()
+
+	def _has_split_transfer(self):
+		"""True when part of the pack was split off into another dispensing lot."""
+		return any(row.transaction_type == "Transfer" and flt(row.qty) > 0 for row in self.transactions)
 
 	def _net_full_pack_sales(self, only_sale_documents=False):
 		"""Net full packs sold in stock UOM (Out minus In reversals, e.g. cancelled invoice).

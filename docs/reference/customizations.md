@@ -230,7 +230,8 @@ Property Setters: `naming_series` hidden and not mandatory, form `field_order`.
 
 Property Setters: `rounded_total`, `base_rounded_total`, `in_words` visible (`in_words` prints,
 `base_rounded_total` does not), `disable_rounded_total` default 0, `scan_barcode` visible,
-`naming_series` options.
+`naming_series` options (`PO-.YYYY.-.#####.` and `PUR-ORD-.YYYY.-`). Both series are kept in the
+options so a site-level `naming_series` default of either format stays valid during install/migrate.
 
 ## Doctypes whose fields are shipped as part of the Custom Field fixture
 

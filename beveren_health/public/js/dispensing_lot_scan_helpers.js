@@ -60,12 +60,16 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn,
 
 	let qty = beveren_health.dispensing_lot_scan.count_lots(row.custom_dispensing_lot);
 	const row_qty = flt(row.qty);
+	const conversion_factor = flt(row.conversion_factor) || 1;
 	const rate = flt(row.rate);
 	const basic_rate = flt(row.basic_rate);
 
-	// Material Transfer: one serial = one full pack (no unit breakdown on the line)
+	// Material Transfer: one serial = one pack, and a partial qty on the line is kept so
+	// only that quantity moves (the pack is split at the destination).
 	if (frm && frm.doc.doctype === "Stock Entry" && frm.doc.purpose === "Material Transfer") {
-		qty = qty > 0 ? 1 : 0;
+		if (qty === 1) {
+			qty = row_qty > 0 ? row_qty : 1;
+		}
 	} else if (qty <= 1 && row_qty > 0) {
 		// Single partial pack — keep fractional qty from the row
 		qty = row_qty;
@@ -92,7 +96,7 @@ beveren_health.dispensing_lot_scan.sync_qty_from_lots = function (frm, cdt, cdn,
 		);
 	} else if (cdt === "Stock Entry Detail") {
 		frappe.model.set_value(cdt, cdn, "qty", qty);
-		frappe.model.set_value(cdt, cdn, "transfer_qty", qty);
+		frappe.model.set_value(cdt, cdn, "transfer_qty", qty * conversion_factor);
 		frappe.model.set_value(cdt, cdn, "amount", qty * (basic_rate || rate));
 		frappe.model.set_value(cdt, cdn, "basic_amount", qty * basic_rate);
 	} else if (cdt === "Purchase Receipt Item") {

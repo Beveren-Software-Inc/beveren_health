@@ -205,11 +205,9 @@ def get_data(filters: frappe._dict) -> list[dict]:
 		posting_date = getdate(row.posting_date) if row.posting_date else None
 		row["days"] = date_diff(as_on, posting_date) if posting_date else None
 
-		# Signed qty for totals: In +, Out -, Transfer 0 movement impact
-		if row.movement == "Out":
+		# Signed qty for totals: In +, Out / split Transfer -, whole-pack Transfer 0
+		if row.movement in ("Out", "Transfer"):
 			row["qty"] = -abs(row.qty or 0)
-		elif row.movement == "Transfer":
-			row["qty"] = 0
 		else:
 			row["qty"] = abs(row.qty or 0)
 

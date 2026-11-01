@@ -5,7 +5,9 @@ import frappe
 from frappe.tests import IntegrationTestCase
 
 from beveren_health.beveren_health.customize.dispensing_lot import (
+	_next_split_serial,
 	_open_stock_document_dispensing_qty,
+	_row_stock_qty,
 	_stock_row_zeroes_batch,
 	compute_dispensing_qty_per_serial,
 	round_dispensing_qty,
@@ -314,3 +316,104 @@ class IntegrationTestDispensingLot(IntegrationTestCase):
 		self.assertEqual(lot.remaining_qty, 50.0)
 		self.assertEqual(lot.status, "Active")
 		self.assertEqual(lot.serial_no, "SN-TEST-0001")
+
+	# ─── Partial transfer (pack split) ───────────────────────────────────────────
+
+	def test_split_transfer_takes_only_the_moved_units(self):
+		# 9 of 30 UNIT moved out: the pack stays where it is with 21 UNIT left.
+		lot = self._lot_after_transactions(
+			[
+				{
+					"transaction_type": "Transfer",
+					"qty": 9,
+					"uom": "UNIT",
+					"reference_doctype": "Stock Entry",
+					"reference_name": "MAT-STE-2026-00850",
+					"remarks": "Split transfer MAT-STE-2026-00850: 9 UNIT moved to Rose Pharmacy Sanad",
+				}
+			],
+			initial_qty=30,
+		)
+
+		self.assertEqual(lot.remaining_qty, 21.0)
+		self.assertEqual(lot.status, "Partially Sold")
+		self.assertEqual(lot.serial_no, "SN-TEST-0001")
+
+	def test_split_transfer_without_unit_uom_takes_stock_qty(self):
+		# Items without a UNIT UOM move the split quantity in the stock UOM.
+		lot = self._lot_after_transactions(
+			[
+				{
+					"transaction_type": "Transfer",
+					"qty": 1,
+					"uom": "Pack",
+					"reference_doctype": "Stock Entry",
+					"reference_name": "MAT-STE-2026-00852",
+					"remarks": "Split transfer",
+				}
+			],
+			initial_qty=3,
+			uom="Pack",
+		)
+
+		self.assertEqual(lot.remaining_qty, 2.0)
+		self.assertEqual(lot.status, "Partially Sold")
+
+	def test_whole_pack_transfer_keeps_the_pack_intact(self):
+		# A whole-pack transfer moves the lot itself and posts a Transfer row with qty 0.
+		lot = self._lot_after_transactions(
+			[
+				{
+					"transaction_type": "Transfer",
+					"qty": 0,
+					"uom": "UNIT",
+					"reference_doctype": "Stock Entry",
+					"reference_name": "MAT-STE-2026-00851",
+					"remarks": "Transferred from Rose Pharmacy Tashan to Rose Pharmacy Sanad",
+				}
+			],
+			initial_qty=30,
+		)
+
+		self.assertEqual(lot.remaining_qty, 30.0)
+		self.assertEqual(lot.status, "Active")
+
+	def test_split_transfer_after_units_sold_adds_up(self):
+		lot = self._lot_after_transactions(
+			[
+				{
+					"transaction_type": "Out",
+					"qty": 10,
+					"uom": "UNIT",
+					"reference_doctype": "Sales Invoice",
+					"reference_name": "SINV-2026-00010",
+					"remarks": "Sold",
+				},
+				{
+					"transaction_type": "Transfer",
+					"qty": 5,
+					"uom": "UNIT",
+					"reference_doctype": "Stock Entry",
+					"reference_name": "MAT-STE-2026-00853",
+					"remarks": "Split transfer",
+				},
+			],
+			initial_qty=30,
+		)
+
+		self.assertEqual(lot.remaining_qty, 15.0)
+		self.assertEqual(lot.status, "Partially Sold")
+
+	def test_row_stock_qty_prefers_transfer_qty(self):
+		# 9 UNIT of a 30 UNIT pack: Stock Entry stores 0.3 PACK in transfer_qty.
+		row = frappe._dict(qty=9, transfer_qty=0.3, conversion_factor=0.033333333, stock_qty=0)
+		self.assertAlmostEqual(_row_stock_qty(row), 0.3, places=6)
+
+	def test_row_stock_qty_falls_back_to_qty_times_conversion_factor(self):
+		row = frappe._dict(qty=9, conversion_factor=0.033333333)
+		self.assertAlmostEqual(_row_stock_qty(row), 0.3, places=5)
+		self.assertEqual(_row_stock_qty(frappe._dict(qty=2)), 2)
+		self.assertEqual(_row_stock_qty(frappe._dict()), 0)
+
+	def test_next_split_serial_suffixes_the_pack_serial(self):
+		self.assertEqual(_next_split_serial("SN-TEST-9999"), "SN-TEST-9999-1")
