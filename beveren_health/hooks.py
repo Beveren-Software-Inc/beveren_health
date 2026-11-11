@@ -521,6 +521,7 @@ fixtures = [
 					"Timesheet-custom_allow_food_allowance_on_close_observation",
 					"Timesheet-custom_payroll_end_date",
 					"Timesheet-custom_payroll_start_date",
+					"Leave Application-custom_hod_email",
 				],
 			]
 		],
