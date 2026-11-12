@@ -25,6 +25,7 @@
   "nationality",
   "is_gosi_registered",
   "calculation_section",
+  "consider_full_salary_before_cutoff_date",
   "consider_full_salary_after_cutoff_date",
   "base_salary",
   "basic_salary",
@@ -164,9 +165,15 @@
   },
   {
    "default": "0",
+   "fieldname": "consider_full_salary_before_cutoff_date",
+   "fieldtype": "Check",
+   "label": "Full Salary Before Cut-Off"
+  },
+  {
+   "default": "0",
    "fieldname": "consider_full_salary_after_cutoff_date",
    "fieldtype": "Check",
-   "label": "Consider Full Salary After Cutoff Date"
+   "label": "Full Salary After Cut-Off"
   },
   {
    "fieldname": "base_salary",

@@ -57,105 +57,303 @@ def get_reference_doctypes(doctype, txt, searchfield, start, page_len, filters):
 
 def before_save(doc, method):
 	_set_total_experience(doc)
+	_sync_indemnity_from_fnf(doc)
 	_populate_indemnity_payables(doc)
 	_populate_outstanding_sales_invoices(doc)
 
 
 def _set_total_experience(doc):
+	if not doc.relieving_date or not doc.date_of_joining:
+		doc.custom_total_experience = ""
+		return
 	relieving_date = add_days(doc.relieving_date, 1)
-	rd = relativedelta(relieving_date, doc.date_of_joining)
+	rd = relativedelta(getdate(relieving_date), getdate(doc.date_of_joining))
 	doc.custom_total_experience = f"{rd.years} years {rd.months} months and {rd.days} days"
 
 
-def _populate_indemnity_payables(doc):
-	if not doc.custom_indemnity:
+def _sync_indemnity_from_fnf(doc):
+	"""Keep the linked draft Indemnity in sync with changes made on FnF
+	(e.g. toggling consider_full_salary, changing base/basic salary,
+	cutoff date, or relieving date).
+	"""
+	if not doc.custom_indemnity or not frappe.db.exists("Indemnity", doc.custom_indemnity):
 		return
 
 	indemnity = frappe.get_doc("Indemnity", doc.custom_indemnity)
+	if indemnity.docstatus != 0:
+		return
 
+	needs_save = False
+
+	# Support two independent options: Full Salary Before Cut-Off and Full Salary After Cut-Off
+	consider_before = 1 if doc.get("custom_consider_full_salary") else 0
+	consider_after = 1 if doc.get("custom_consider_full_salary_after_cutoff_date") else 0
+
+	if indemnity.get("consider_full_salary_before_cutoff_date") != consider_before:
+		indemnity.consider_full_salary_before_cutoff_date = consider_before
+		needs_save = True
+
+	if indemnity.get("consider_full_salary_after_cutoff_date") != consider_after:
+		indemnity.consider_full_salary_after_cutoff_date = consider_after
+		needs_save = True
+
+	if doc.custom_cutoff_date and indemnity.indemnity_cutoff_date != getdate(doc.custom_cutoff_date):
+		indemnity.indemnity_cutoff_date = doc.custom_cutoff_date
+		needs_save = True
+
+	if flt(doc.custom_base_salary) and flt(indemnity.base_salary) != flt(doc.custom_base_salary):
+		indemnity.base_salary = flt(doc.custom_base_salary)
+		needs_save = True
+
+	if flt(doc.custom_basic_salary) and flt(indemnity.basic_salary) != flt(doc.custom_basic_salary):
+		indemnity.basic_salary = flt(doc.custom_basic_salary)
+		needs_save = True
+
+	if doc.relieving_date and indemnity.relieving_date != getdate(doc.relieving_date):
+		indemnity.relieving_date = doc.relieving_date
+		needs_save = True
+
+	if doc.date_of_joining and indemnity.date_of_joining != getdate(doc.date_of_joining):
+		indemnity.date_of_joining = doc.date_of_joining
+		needs_save = True
+
+	if needs_save:
+		indemnity.save()
+
+	# Update Indemnity Value in Indemnity Reward field and IR Base
+	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
+	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+
+
+def _populate_indemnity_payables(doc):
 	LABEL_BEFORE = "Indemnity Reward (Before Cut-Off Date)"
 	LABEL_AFTER = "Indemnity Reward (After Cut-Off Date)"
 
-	def upsert_payable(label, amount, payable_account):
-		for row in doc.payables:
-			if row.component == label:
-				row.amount = flt(amount, 3)
-				row.account = payable_account or row.account
-				row.reference_document_type = "Indemnity"
-				row.reference_document = indemnity.name
-				return
-		doc.append(
-			"payables",
-			{
-				"component": label,
-				"amount": flt(amount, 3),
-				"account": payable_account,
-				"reference_document_type": "Indemnity",
-				"reference_document": indemnity.name,
-				"status": "Unsettled",
-				"paid_via_salary_slip": indemnity.pay_via_salary_slip,
-			},
-		)
+	if not doc.custom_indemnity:
+		# If indemnity is not linked, remove any remaining indemnity rows
+		doc.payables = [
+			row for row in (doc.payables or [])
+			if row.reference_document_type != "Indemnity"
+			and row.component not in (LABEL_BEFORE, LABEL_AFTER)
+		]
+		doc.custom_indemnity_reward = 0.0
+		doc.custom_ir_base = 0.0
+		doc.set_totals()
+		return
 
-	if flt(indemnity.indemnity_before):
-		upsert_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
+	indemnity = frappe.get_doc("Indemnity", doc.custom_indemnity)
+	consider_before = 1 if doc.get("custom_consider_full_salary") else 0
+	consider_after = 1 if doc.get("custom_consider_full_salary_after_cutoff_date") else 0
 
-	if flt(indemnity.indemnity_after):
-		upsert_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
+	# Update Indemnity Value in Indemnity Reward field and IR Base
+	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
+	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+
+	def upsert_or_remove_payable(label, amount, payable_account):
+		existing_row = next((row for row in (doc.payables or []) if row.component == label), None)
+		if flt(amount, 3) > 0:
+			if existing_row:
+				existing_row.amount = flt(amount, 3)
+				existing_row.account = payable_account or existing_row.account
+				existing_row.reference_document_type = "Indemnity"
+				existing_row.reference_document = indemnity.name
+				existing_row.paid_via_salary_slip = indemnity.pay_via_salary_slip
+			else:
+				doc.append(
+					"payables",
+					{
+						"component": label,
+						"amount": flt(amount, 3),
+						"account": payable_account,
+						"reference_document_type": "Indemnity",
+						"reference_document": indemnity.name,
+						"status": "Unsettled",
+						"paid_via_salary_slip": indemnity.pay_via_salary_slip,
+					},
+				)
+		elif existing_row:
+			doc.payables.remove(existing_row)
+
+	upsert_or_remove_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
+	upsert_or_remove_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
 
 	# before_save runs after the controller's validate, so the totals computed
 	doc.set_totals()
 
 
 @frappe.whitelist()
-def create_indemnity(fnf: str) -> str:
-	"""Create (or re-link) the Indemnity for a draft Full and Final Statement.
+def get_indemnity_configuration(employee: str, company: str = None) -> dict:
+	"""Fetch default configurations for an employee on Full and Final Statement:
+	cutoff_date, base_salary, basic_salary, date_of_joining, relieving_date,
+	nationality, under_gosi_registered, and total_experience.
+	"""
+	if not employee:
+		return {}
 
-	The Indemnity computes its own figures from the employee's Salary Structure
-	Assignment and the HR Settings cutoff date, so only the identifying fields
-	are supplied here. Saving the statement afterwards lets before_save push the
-	computed amounts into the payables table.
+	emp_fields = ["date_of_joining", "relieving_date", "company"]
+	if frappe.db.has_column("Employee", "custom_nationality"):
+		emp_fields.append("custom_nationality")
+	if frappe.db.has_column("Employee", "custom_under_gosi_registered_"):
+		emp_fields.append("custom_under_gosi_registered_")
+
+	emp = frappe.db.get_value("Employee", employee, emp_fields, as_dict=True) or {}
+
+	company = company or emp.get("company")
+	cutoff_date = frappe.db.get_single_value("HR Settings", "custom_indemnity_cutoff_date")
+
+	# Fetch base salary (Total/Gross) and basic salary from Salary Structure Assignment & Structure
+	base_salary = 0.0
+	basic_salary = 0.0
+
+	assignment = frappe.db.get_value(
+		"Salary Structure Assignment",
+		{"employee": employee, "docstatus": 1},
+		["salary_structure", "base"],
+		order_by="from_date desc",
+		as_dict=True,
+	)
+	if assignment and assignment.salary_structure:
+		structure = frappe.get_doc("Salary Structure", assignment.salary_structure)
+		computed_total = 0.0
+		computed_basic = 0.0
+		for earning in structure.earnings:
+			component = frappe.get_doc("Salary Component", earning.salary_component)
+			amount = flt(earning.amount)
+			if component.amount_based_on_formula and component.formula:
+				context = {"doc": emp, "flt": flt, "base": flt(assignment.base)}
+				try:
+					from frappe.utils.safe_exec import safe_eval
+
+					amount = safe_eval(component.formula, context)
+				except Exception:
+					pass
+			computed_total += flt(amount)
+			if component.get("custom_is_basic_salary_"):
+				computed_basic += flt(amount)
+
+		base_salary = flt(max(computed_total, flt(assignment.base)))
+		basic_salary = flt(computed_basic)
+	elif assignment:
+		base_salary = flt(assignment.base)
+		basic_salary = flt(assignment.base)
+
+	# Calculate experience if dates available
+	total_experience = ""
+	if emp.get("date_of_joining") and emp.get("relieving_date"):
+		relieving_date = add_days(emp.get("relieving_date"), 1)
+		rd = relativedelta(getdate(relieving_date), getdate(emp.get("date_of_joining")))
+		total_experience = f"{rd.years} years {rd.months} months and {rd.days} days"
+
+	return {
+		"cutoff_date": cutoff_date,
+		"base_salary": base_salary,
+		"basic_salary": basic_salary,
+		"date_of_joining": emp.get("date_of_joining"),
+		"relieving_date": emp.get("relieving_date"),
+		"nationality": emp.get("custom_nationality"),
+		"is_gosi_registered": emp.get("custom_under_gosi_registered_"),
+		"total_experience": total_experience,
+	}
+
+
+@frappe.whitelist()
+def create_or_update_indemnity(fnf: str) -> str:
+	"""Create or update the Indemnity for a draft Full and Final Statement.
+
+	Reads configurations directly from the FnF document (cutoff date, base salary,
+	basic salary, consider_full_salary_after_cutoff_date, dates) and passes them
+	to the Indemnity record. If an Indemnity is already linked, it updates and
+	recalculates it instead of failing on duplicate constraints.
 	"""
 	doc = frappe.get_doc("Full and Final Statement", fnf)
 	doc.check_permission("write")
 
 	if doc.docstatus != 0:
-		frappe.throw(_("Indemnity can only be generated from a draft Full and Final Statement."))
+		frappe.throw(_("Indemnity can only be generated or updated from a draft Full and Final Statement."))
 
-	if doc.custom_indemnity:
-		frappe.throw(
-			_("Indemnity {0} is already linked to this statement.").format(
-				frappe.bold(frappe.get_desk_link("Indemnity", doc.custom_indemnity))
-			)
+	if not doc.employee:
+		frappe.throw(_("Please select an Employee before generating Indemnity."))
+
+	# Fallback/default dates from Employee master if not populated on FnF
+	if not doc.date_of_joining:
+		doc.date_of_joining = frappe.db.get_value("Employee", doc.employee, "date_of_joining")
+	if not doc.relieving_date:
+		doc.relieving_date = frappe.db.get_value("Employee", doc.employee, "relieving_date")
+
+	if not doc.date_of_joining:
+		frappe.throw(_("Date of Joining is required on Employee or Full and Final Statement."))
+	if not doc.relieving_date:
+		frappe.throw(_("Relieving Date is required on Employee or Full and Final Statement."))
+
+	# Find or load existing indemnity
+	indemnity = None
+	if doc.custom_indemnity and frappe.db.exists("Indemnity", doc.custom_indemnity):
+		indemnity = frappe.get_doc("Indemnity", doc.custom_indemnity)
+		if indemnity.docstatus == 2:
+			indemnity = None
+
+	if not indemnity:
+		# Check if an existing indemnity already exists for this employee and period
+		existing_name = frappe.db.get_value(
+			"Indemnity",
+			{
+				"employee": doc.employee,
+				"date_of_joining": doc.date_of_joining,
+				"relieving_date": doc.relieving_date,
+				"docstatus": ["!=", 2],
+			},
+			"name",
 		)
+		if existing_name:
+			indemnity = frappe.get_doc("Indemnity", existing_name)
+		else:
+			indemnity = frappe.new_doc("Indemnity")
+			indemnity.employee = doc.employee
+			indemnity.company = doc.company
+			indemnity.posting_date = doc.transaction_date or nowdate()
 
-	# Indemnity refuses duplicates for the same joining/relieving period, so an
-	# existing one for this employee is linked instead of creating a second.
-	indemnity_name = frappe.db.get_value(
-		"Indemnity",
-		{
-			"employee": doc.employee,
-			"date_of_joining": doc.date_of_joining,
-			"relieving_date": doc.relieving_date,
-			"docstatus": ["!=", 2],
-		},
-		"name",
-	)
+	# Apply configurations from FnF onto the Indemnity document
+	indemnity.date_of_joining = doc.date_of_joining
+	indemnity.relieving_date = doc.relieving_date
+	indemnity.company = doc.company
+	if doc.custom_cutoff_date:
+		indemnity.indemnity_cutoff_date = doc.custom_cutoff_date
+	consider_before = 1 if doc.get("custom_consider_full_salary") else 0
+	consider_after = 1 if doc.get("custom_consider_full_salary_after_cutoff_date") else 0
+	indemnity.consider_full_salary_before_cutoff_date = consider_before
+	indemnity.consider_full_salary_after_cutoff_date = consider_after
+	if flt(doc.custom_base_salary):
+		indemnity.base_salary = flt(doc.custom_base_salary)
+	if flt(doc.custom_basic_salary):
+		indemnity.basic_salary = flt(doc.custom_basic_salary)
+	indemnity.cost_center = _get_cost_center(doc)
 
-	if not indemnity_name:
-		indemnity = frappe.new_doc("Indemnity")
-		indemnity.employee = doc.employee
-		indemnity.company = doc.company
-		indemnity.posting_date = doc.transaction_date or nowdate()
-		indemnity.consider_full_salary_after_cutoff_date = doc.custom_consider_full_salary_after_cutoff_date
-		indemnity.cost_center = _get_cost_center(doc)
+	if indemnity.is_new():
 		indemnity.insert()
-		indemnity_name = indemnity.name
+	else:
+		indemnity.save()
 
-	doc.custom_indemnity = indemnity_name
+	# Sync back calculated values to FnF in case Indemnity computed them
+	doc.custom_indemnity = indemnity.name
+	doc.custom_cutoff_date = indemnity.indemnity_cutoff_date
+	doc.custom_base_salary = indemnity.base_salary
+	doc.custom_basic_salary = indemnity.basic_salary
+	doc.custom_consider_full_salary = indemnity.get("consider_full_salary_before_cutoff_date", 0)
+	doc.custom_consider_full_salary_after_cutoff_date = indemnity.get("consider_full_salary_after_cutoff_date", 0)
+	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
+	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+
+	_set_total_experience(doc)
+	_populate_indemnity_payables(doc)
 	doc.save()
 
-	return indemnity_name
+	return indemnity.name
+
+
+@frappe.whitelist()
+def create_indemnity(fnf: str) -> str:
+	"""Backwards-compatible wrapper calling create_or_update_indemnity."""
+	return create_or_update_indemnity(fnf)
 
 
 def _get_cost_center(doc):
