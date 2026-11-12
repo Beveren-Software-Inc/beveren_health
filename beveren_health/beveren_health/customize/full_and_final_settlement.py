@@ -122,7 +122,9 @@ def _sync_indemnity_from_fnf(doc):
 
 	# Update Indemnity Value in Indemnity Reward field and IR Base
 	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
-	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+	doc.custom_ir_base = flt(
+		indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3
+	)
 
 
 def _populate_indemnity_payables(doc):
@@ -132,9 +134,9 @@ def _populate_indemnity_payables(doc):
 	if not doc.custom_indemnity:
 		# If indemnity is not linked, remove any remaining indemnity rows
 		doc.payables = [
-			row for row in (doc.payables or [])
-			if row.reference_document_type != "Indemnity"
-			and row.component not in (LABEL_BEFORE, LABEL_AFTER)
+			row
+			for row in (doc.payables or [])
+			if row.reference_document_type != "Indemnity" and row.component not in (LABEL_BEFORE, LABEL_AFTER)
 		]
 		doc.custom_indemnity_reward = 0.0
 		doc.custom_ir_base = 0.0
@@ -147,7 +149,9 @@ def _populate_indemnity_payables(doc):
 
 	# Update Indemnity Value in Indemnity Reward field and IR Base
 	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
-	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+	doc.custom_ir_base = flt(
+		indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3
+	)
 
 	def upsert_or_remove_payable(label, amount, payable_account):
 		existing_row = next((row for row in (doc.payables or []) if row.component == label), None)
@@ -182,7 +186,7 @@ def _populate_indemnity_payables(doc):
 
 
 @frappe.whitelist()
-def get_indemnity_configuration(employee: str, company: str = None) -> dict:
+def get_indemnity_configuration(employee: str, company: str | None = None) -> dict:
 	"""Fetch default configurations for an employee on Full and Final Statement:
 	cutoff_date, base_salary, basic_salary, date_of_joining, relieving_date,
 	nationality, under_gosi_registered, and total_experience.
@@ -339,9 +343,13 @@ def create_or_update_indemnity(fnf: str) -> str:
 	doc.custom_base_salary = indemnity.base_salary
 	doc.custom_basic_salary = indemnity.basic_salary
 	doc.custom_consider_full_salary = indemnity.get("consider_full_salary_before_cutoff_date", 0)
-	doc.custom_consider_full_salary_after_cutoff_date = indemnity.get("consider_full_salary_after_cutoff_date", 0)
+	doc.custom_consider_full_salary_after_cutoff_date = indemnity.get(
+		"consider_full_salary_after_cutoff_date", 0
+	)
 	doc.custom_indemnity_reward = flt(indemnity.amount, 3)
-	doc.custom_ir_base = flt(indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3)
+	doc.custom_ir_base = flt(
+		indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3
+	)
 
 	_set_total_experience(doc)
 	_populate_indemnity_payables(doc)

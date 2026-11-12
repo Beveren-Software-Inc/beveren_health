@@ -2,7 +2,7 @@
 # See license.txt
 
 import frappe
-from frappe.tests import IntegrationTestCase
+from frappe.tests import UnitTestCase
 
 from beveren_health.beveren_health.customize.dispensing_lot import (
 	_next_split_serial,
@@ -20,7 +20,7 @@ EXTRA_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
 IGNORE_TEST_RECORD_DEPENDENCIES = []  # eg. ["User"]
 
 
-class IntegrationTestDispensingLot(IntegrationTestCase):
+class TestDispensingLot(UnitTestCase):
 	"""
 	Integration tests for DispensingLot.
 	Use this class for testing interactions between multiple components.

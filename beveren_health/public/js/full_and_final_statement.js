@@ -5,7 +5,6 @@ frappe.ui.form.on("Full and Final Statement", {
 		_override_reference_queries(frm, "payables");
 		_override_reference_queries(frm, "receivables");
 
-
 		// Restrict Indemnity link to the same employee only
 		frm.set_query("custom_indemnity", function () {
 			return {
@@ -123,19 +122,17 @@ frappe.ui.form.on("Full and Final Outstanding Statement", {
 	reference_document(frm, cdt, cdn) {
 		const child = locals[cdt][cdn];
 		if (child.reference_document_type === "Indemnity" && child.reference_document) {
-			frappe.db
-				.get_doc("Indemnity", child.reference_document)
-				.then((indemnity) => {
-					if (!indemnity) return;
-					frappe.model.set_value(cdt, cdn, "account", indemnity.payable_account || "");
-					if (child.component === "Indemnity Reward (Before Cut-Off Date)") {
-						frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.indemnity_before, 3));
-					} else if (child.component === "Indemnity Reward (After Cut-Off Date)") {
-						frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.indemnity_after, 3));
-					} else {
-						frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.amount, 3));
-					}
-				});
+			frappe.db.get_doc("Indemnity", child.reference_document).then((indemnity) => {
+				if (!indemnity) return;
+				frappe.model.set_value(cdt, cdn, "account", indemnity.payable_account || "");
+				if (child.component === "Indemnity Reward (Before Cut-Off Date)") {
+					frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.indemnity_before, 3));
+				} else if (child.component === "Indemnity Reward (After Cut-Off Date)") {
+					frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.indemnity_after, 3));
+				} else {
+					frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.amount, 3));
+				}
+			});
 		}
 	},
 });
@@ -160,7 +157,9 @@ function _generate_or_update_indemnity(frm) {
 	}
 
 	const execute_call = () => {
-		const action_label = frm.doc.custom_indemnity ? __("Updating Indemnity...") : __("Generating Indemnity...");
+		const action_label = frm.doc.custom_indemnity
+			? __("Updating Indemnity...")
+			: __("Generating Indemnity...");
 		frappe.call({
 			method: "beveren_health.beveren_health.customize.full_and_final_settlement.create_or_update_indemnity",
 			args: { fnf: frm.doc.name },
@@ -216,14 +215,13 @@ function _compute_total_experience_ui(frm) {
 	start.add(months, "months");
 	let days = end.diff(start, "days");
 
-	frm.set_value(
-		"custom_total_experience",
-		`${years} years ${months} months and ${days} days`
-	);
+	frm.set_value("custom_total_experience", `${years} years ${months} months and ${days} days`);
 }
 
 function _update_ir_base_and_reward_ui(frm) {
-	const consider_full = frm.doc.custom_consider_full_salary || frm.doc.custom_consider_full_salary_after_cutoff_date;
+	const consider_full =
+		frm.doc.custom_consider_full_salary ||
+		frm.doc.custom_consider_full_salary_after_cutoff_date;
 	const ir_base = consider_full ? frm.doc.custom_base_salary : frm.doc.custom_basic_salary;
 	if (ir_base !== undefined && ir_base !== null) {
 		frm.set_value("custom_ir_base", flt(ir_base, 3));
@@ -253,9 +251,14 @@ function _populate_indemnity_payables(frm, indemnity) {
 	}
 
 	if (indemnity) {
-		const consider_full = frm.doc.custom_consider_full_salary || frm.doc.custom_consider_full_salary_after_cutoff_date;
+		const consider_full =
+			frm.doc.custom_consider_full_salary ||
+			frm.doc.custom_consider_full_salary_after_cutoff_date;
 		frm.set_value("custom_indemnity_reward", flt(indemnity.amount, 3));
-		frm.set_value("custom_ir_base", flt(consider_full ? indemnity.base_salary : indemnity.basic_salary, 3));
+		frm.set_value(
+			"custom_ir_base",
+			flt(consider_full ? indemnity.base_salary : indemnity.basic_salary, 3)
+		);
 
 		upsert_or_remove(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account);
 		upsert_or_remove(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account);

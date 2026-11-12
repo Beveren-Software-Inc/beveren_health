@@ -97,7 +97,11 @@ class Indemnity(AccountsController):
 
 	def _compute_salaries(self):
 		# If both distinct salaries were provided (e.g. from FnF or manual entry), use them
-		if flt(self.base_salary) and flt(self.basic_salary) and flt(self.base_salary) != flt(self.basic_salary):
+		if (
+			flt(self.base_salary)
+			and flt(self.basic_salary)
+			and flt(self.base_salary) != flt(self.basic_salary)
+		):
 			return
 
 		assignment = frappe.db.get_value(
@@ -138,7 +142,9 @@ class Indemnity(AccountsController):
 					computed_basic += flt(amount)
 
 		# Total / Full Salary (Gross) is total earnings or assignment base, whichever is higher
-		if not flt(self.base_salary) or (flt(self.base_salary) == flt(self.basic_salary) and computed_total > flt(self.base_salary)):
+		if not flt(self.base_salary) or (
+			flt(self.base_salary) == flt(self.basic_salary) and computed_total > flt(self.base_salary)
+		):
 			self.base_salary = flt(max(computed_total, flt(assignment.base)))
 
 		if not flt(self.basic_salary):
