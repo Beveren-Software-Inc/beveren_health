@@ -68,9 +68,10 @@ class Indemnity(AccountsController):
 			)
 
 	def _set_cutoff_date(self):
-		cutoff = frappe.db.get_single_value("HR Settings", "custom_indemnity_cutoff_date")
-		if cutoff:
-			self.indemnity_cutoff_date = cutoff
+		if not self.indemnity_cutoff_date:
+			cutoff = frappe.db.get_single_value("HR Settings", "custom_indemnity_cutoff_date")
+			if cutoff:
+				self.indemnity_cutoff_date = cutoff
 
 	def _set_default_accounts(self):
 		if not self.expense_account:
@@ -84,6 +85,10 @@ class Indemnity(AccountsController):
 
 	def _validate_dates(self):
 		if not self.date_of_joining:
+			self.date_of_joining = frappe.db.get_value("Employee", self.employee, "date_of_joining")
+		if not self.relieving_date:
+			self.relieving_date = frappe.db.get_value("Employee", self.employee, "relieving_date")
+		if not self.date_of_joining:
 			frappe.throw(_("Date of Joining is required. Please ensure the Employee record has it set."))
 		if not self.relieving_date:
 			frappe.throw(_("Relieving Date is required. Please ensure the Employee record has it set."))
@@ -91,14 +96,12 @@ class Indemnity(AccountsController):
 			frappe.throw(_("Indemnity Cutoff Date is not configured. Please set it in HR Settings."))
 
 	def _compute_salaries(self):
-		# Historical settlements carry their own contractual figures. Both fields
-		# are read_only on the form, so the UI never supplies them and the
-		# assignment lookup below still runs for anything created by hand. When
-		# they ARE supplied - a back-dated import for someone who already left,
-		# whose contract may predate any Salary Structure Assignment - the
-		# supplied figures are authoritative and must not be recomputed from a
-		# structure that does not reflect that contract.
-		if flt(self.base_salary) and flt(self.basic_salary):
+		# If both distinct salaries were provided (e.g. from FnF or manual entry), use them
+		if (
+			flt(self.base_salary)
+			and flt(self.basic_salary)
+			and flt(self.base_salary) != flt(self.basic_salary)
+		):
 			return
 
 		assignment = frappe.db.get_value(
@@ -109,45 +112,60 @@ class Indemnity(AccountsController):
 			as_dict=True,
 		)
 		if not assignment:
-			frappe.throw(
-				_(
-					"No active Salary Structure Assignment found for employee {0}, "
-					"and no base/basic salary was supplied on this document."
-				).format(self.employee)
-			)
+			if not flt(self.base_salary) or not flt(self.basic_salary):
+				frappe.throw(
+					_(
+						"No active Salary Structure Assignment found for employee {0}, "
+						"and no base/basic salary was supplied on this document."
+					).format(self.employee)
+				)
+			return
 
-		base = flt(assignment.base)
-		self.base_salary = base
+		computed_total = 0.0
+		computed_basic = 0.0
 
-		structure = frappe.get_doc("Salary Structure", assignment.salary_structure)
-		basic_salary = 0.0
-		for earning in structure.earnings:
-			component = frappe.get_doc("Salary Component", earning.salary_component)
-			if not component.get("custom_is_basic_salary_"):
-				continue
-			amount = flt(earning.amount)
-			if component.amount_based_on_formula and component.formula:
-				context = {"doc": self, "flt": flt, "base": base}
-				try:
-					amount = safe_eval(component.formula, context)
-				except Exception as e:
-					frappe.throw(
-						_("Error evaluating formula for {0}: {1}").format(component.salary_component, e)
-					)
-			basic_salary += amount
+		if assignment.salary_structure:
+			structure = frappe.get_doc("Salary Structure", assignment.salary_structure)
+			for earning in structure.earnings:
+				component = frappe.get_doc("Salary Component", earning.salary_component)
+				amount = flt(earning.amount)
+				if component.amount_based_on_formula and component.formula:
+					context = {"doc": self, "flt": flt, "base": flt(assignment.base)}
+					try:
+						amount = safe_eval(component.formula, context)
+					except Exception as e:
+						frappe.throw(
+							_("Error evaluating formula for {0}: {1}").format(component.salary_component, e)
+						)
+				computed_total += flt(amount)
+				if component.get("custom_is_basic_salary_"):
+					computed_basic += flt(amount)
 
-		if not basic_salary:
-			frappe.throw(_("Basic Salary component not found or evaluates to zero in the Salary Structure."))
-		self.basic_salary = flt(basic_salary)
+		# Total / Full Salary (Gross) is total earnings or assignment base, whichever is higher
+		if not flt(self.base_salary) or (
+			flt(self.base_salary) == flt(self.basic_salary) and computed_total > flt(self.base_salary)
+		):
+			self.base_salary = flt(max(computed_total, flt(assignment.base)))
+
+		if not flt(self.basic_salary):
+			if not computed_basic:
+				computed_basic = flt(self.base_salary)
+			self.basic_salary = flt(computed_basic)
 
 	def _compute_indemnity(self):
 		cutoff_date = getdate(self.indemnity_cutoff_date)
 		doj = getdate(self.date_of_joining)
 		relieving = getdate(self.relieving_date)
 
-		ir_base_before = flt(self.base_salary)
+		ir_base_before = (
+			flt(self.base_salary)
+			if self.get("consider_full_salary_before_cutoff_date")
+			else flt(self.basic_salary)
+		)
 		ir_base_after = (
-			flt(self.base_salary) if self.consider_full_salary_after_cutoff_date else flt(self.basic_salary)
+			flt(self.base_salary)
+			if self.get("consider_full_salary_after_cutoff_date")
+			else flt(self.basic_salary)
 		)
 
 		def get_eligible_days(total_days):

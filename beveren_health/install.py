@@ -48,6 +48,7 @@ def before_tests():
 	_mute_outgoing_email.
 	"""
 	_mute_outgoing_email()
+	_ensure_hrms_india_reports()
 
 	relaxed = [
 		f"{doctype}.{fieldname}"
@@ -114,6 +115,22 @@ def _mute_outgoing_email():
 	"""
 	frappe.flags.mute_emails = True
 	frappe.conf.mute_emails = 1
+
+
+def _ensure_hrms_india_reports():
+	"""HRMS India regional setup tries to attach Custom Roles to these reports.
+	On fresh test sites in v16 they may not be pre-installed, causing LinkValidationError."""
+	for rpt in ("Professional Tax Deductions", "Provident Fund Deductions", "Income Tax Deductions"):
+		if not frappe.db.exists("Report", rpt):
+			try:
+				doc = frappe.new_doc("Report")
+				doc.report_name = rpt
+				doc.ref_doctype = "Salary Slip"
+				doc.report_type = "Script Report"
+				doc.is_standard = "No"
+				doc.insert(ignore_permissions=True)
+			except Exception:
+				pass
 
 
 def _clear_required_flag(doctype, fieldname):
