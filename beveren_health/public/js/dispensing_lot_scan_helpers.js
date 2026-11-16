@@ -120,3 +120,48 @@ function register_dispensing_lot_qty_sync(child_doctype) {
 register_dispensing_lot_qty_sync("Stock Reconciliation Item");
 register_dispensing_lot_qty_sync("Stock Entry Detail");
 register_dispensing_lot_qty_sync("Purchase Receipt Item");
+
+beveren_health.dispensing_lot_scan.confirm_quantity_overages = async function (frm) {
+	let response;
+	try {
+		response = await frappe.call({
+			method: "beveren_health.beveren_health.customize.dispensing_lot.preview_dispensing_lot_overages",
+			args: { doctype: frm.doctype, name: frm.doc.name, doc: frm.doc },
+		});
+	} catch {
+		frappe.validated = false;
+		return;
+	}
+
+	const lots = response.message || [];
+	if (!lots.length) return;
+
+	const confirmed = await new Promise((resolve) => {
+		const dialog = new frappe.ui.Dialog({
+			title: __("Dispensing Lot Quantity Warning"),
+			fields: [{ fieldtype: "HTML", fieldname: "warning" }],
+			primary_action_label: __("Continue"),
+			primary_action() {
+				resolve(true);
+				dialog.hide();
+			},
+			secondary_action_label: __("Go Back"),
+			secondary_action() {
+				dialog.hide();
+			},
+			onhide() {
+				resolve(false);
+			},
+		});
+		const escape = (value) => frappe.utils.escape_html(String(value));
+		const rows = lots.map((lot) => "<li>" + __(
+			"{0}: Remaining Qty {1}, Initial Qty {2}",
+			[escape(lot.lot), escape(lot.remaining_qty), escape(lot.initial_qty)]
+		) + "</li>").join("");
+		dialog.fields_dict.warning.$wrapper.html(
+			"<p>" + __("This transaction would leave these lots above their initial quantity.") + "</p><ul>" + rows + "</ul>"
+		);
+		dialog.show();
+	});
+	if (!confirmed) frappe.validated = false;
+};

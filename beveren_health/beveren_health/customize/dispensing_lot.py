@@ -929,6 +929,87 @@ def _reactivate_dispensing_lots_zeroed_by(doc, config, posting_date):
 	return reactivated
 
 
+@frappe.whitelist()
+def preview_dispensing_lot_overages(doctype, name, doc):
+	if doctype not in ("Stock Entry", "Stock Reconciliation"):
+		frappe.throw(_("Unsupported stock document type."))
+
+	saved_doc = frappe.get_doc(doctype, name)
+	saved_doc.check_permission("submit")
+	if saved_doc.docstatus != 0:
+		frappe.throw(_("Only draft stock documents can be previewed."))
+
+	doc = frappe._dict(frappe.parse_json(doc))
+	doc.doctype = doctype
+	doc.name = name
+	config = STOCK_DOC_CONFIG[doctype]
+	projected = {}
+
+	for values in doc.get(config["items_field"]) or []:
+		row = frappe._dict(values)
+		if _stock_row_zeroes_batch(doc, row):
+			for current in _lots_to_zero_for_row(doc, row, config):
+				lot = projected.setdefault(current.name, current)
+				_preview_lot_movement(lot, doc, "Out", flt(lot.remaining_qty))
+			continue
+
+		serials = _serials_from_stock_row(row)
+		if not serials or not row.item_code or not row.batch_no:
+			continue
+
+		is_transfer = _is_material_transfer_stock_entry(doc)
+		if not is_transfer:
+			_, dispensing_uom = get_pack_size_and_uom(row.item_code)
+			quantities = compute_dispensing_qty_per_serial(
+				flt(row.get("qty")) or len(serials), serials, item_code=row.item_code
+			)
+
+		for index, serial in enumerate(serials):
+			lot_name = _get_lot_name_by_serial(serial)
+			if not lot_name:
+				continue
+			lot = projected.get(lot_name)
+			if lot is None:
+				lot = frappe.get_doc("Dispensing Lot", lot_name)
+				projected[lot_name] = lot
+
+			if is_transfer:
+				transfer_qty = flt(_transfer_qty_for_serial(row, serial))
+				split_qty = transfer_qty if transfer_qty < flt(lot.remaining_qty) - QTY_TOLERANCE else 0
+				_preview_lot_movement(lot, doc, "Transfer", split_qty)
+			else:
+				if _lot_needs_stock_reactivation(lot):
+					lot.uom = dispensing_uom or lot.uom
+					lot.initial_qty = flt(quantities[index]) or flt(lot.initial_qty) or 1
+					in_qty = _stock_reactivation_in_qty(lot)
+					if in_qty > 0:
+						_preview_lot_movement(lot, doc, "In", in_qty)
+				lot.set_remaining_qty()
+				lot.set_status()
+
+	return [
+		{"lot": lot.name, "initial_qty": lot.initial_qty, "remaining_qty": lot.remaining_qty}
+		for lot in projected.values()
+		if flt(lot.remaining_qty) - flt(lot.initial_qty) > QTY_TOLERANCE
+	]
+
+
+def _preview_lot_movement(lot, doc, transaction_type, qty):
+	if not _lot_has_reference_transaction(lot, doc.doctype, doc.name, transaction_type):
+		lot.append(
+			"transactions",
+			{
+				"transaction_type": transaction_type,
+				"qty": qty,
+				"uom": lot.uom,
+				"reference_doctype": doc.doctype,
+				"reference_name": doc.name,
+			},
+		)
+		lot.set_remaining_qty()
+		lot.set_status()
+
+
 def create_dispensing_lots_on_submit(doc, method=None):
 	"""Create Dispensing Lot records from scanned serials on stock document submit.
 
@@ -1085,6 +1166,10 @@ def _lot_needs_stock_reactivation(lot):
 	return False
 
 
+def _stock_reactivation_in_qty(lot):
+	return _open_stock_document_dispensing_qty(lot) or flt(lot.initial_qty) - flt(lot.remaining_qty)
+
+
 def _restore_dispensing_lot_from_stock_doc(
 	lot,
 	serial_no,
@@ -1128,9 +1213,7 @@ def _restore_dispensing_lot_from_stock_doc(
 	# In of only the new quantity leaves that Out in the balance and remaining
 	# goes negative. Balance the open stock-document quantity instead, so
 	# initial and remaining both become the quantity counted now.
-	in_qty = _open_stock_document_dispensing_qty(lot)
-	if in_qty <= 0:
-		in_qty = lot_qty - flt(lot.remaining_qty)
+	in_qty = _stock_reactivation_in_qty(lot)
 
 	if in_qty > 0 and not _lot_has_reference_transaction(lot, reference_doctype, reference_name, "In"):
 		_append_lot_transaction(
@@ -2034,6 +2117,14 @@ def validate_sales_invoice_dispensing_lots(doc):
 		lots = _get_lot_docs(lot_names)
 		sale_rows = _sale_rows_for_lots(row, lots, multi_pack)
 		for lot, sale_row in zip(lots, sale_rows, strict=True):
+			if doc.get("custom_pos_opening_entry") and (
+				not row.warehouse or lot.warehouse != row.warehouse
+			):
+				frappe.throw(
+					_("Dispensing Lot {0} is not in the invoice row warehouse {1}.").format(
+						lot.name, row.warehouse or _("(not set)")
+					)
+				)
 			validate_dispensing_lot_for_sale(sale_row, lot)
 
 
