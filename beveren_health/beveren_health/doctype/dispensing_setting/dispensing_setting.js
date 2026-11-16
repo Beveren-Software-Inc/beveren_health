@@ -3,6 +3,16 @@
 
 frappe.ui.form.on("Dispensing Setting", {
 	refresh(frm) {
+		if (frm.doc.enable_bulk_lot_qty_correction && frm.perm?.[0]?.write) {
+			frm.add_custom_button(__("Bulk Correct Remaining Qty"), () => {
+				if (frm.is_dirty()) {
+					frappe.msgprint(__("Save Dispensing Setting before starting the correction."));
+					return;
+				}
+				show_bulk_lot_qty_correction();
+			});
+		}
+
 		frm.add_custom_button(__("Enable Has Dispense Lot from Lots"), function () {
 			frappe.confirm(
 				__(
@@ -93,3 +103,53 @@ frappe.realtime.on("dispensing_setting_flag_dispense_lot_done", function (data) 
 		});
 	}
 });
+
+async function show_bulk_lot_qty_correction() {
+	const api = "beveren_health.beveren_health.doctype.dispensing_setting.dispensing_setting";
+	const response = await frappe.call({
+		method: api + ".preview_bulk_lot_qty_correction",
+		freeze: true,
+	});
+	const lots = response.message || [];
+	if (!lots.length) {
+		frappe.msgprint(__("No Dispensing Lots have Remaining Qty above Initial Qty."));
+		return;
+	}
+
+	const dialog = new frappe.ui.Dialog({
+		title: __("Bulk Correct Remaining Qty ({0} lots)", [lots.length]),
+		size: "extra-large",
+		fields: [{ fieldtype: "HTML", fieldname: "preview" }],
+		primary_action_label: __("Apply Corrections"),
+		async primary_action() {
+			const result = await frappe.call({
+				method: api + ".apply_bulk_lot_qty_correction",
+				args: { lots },
+				freeze: true,
+				btn: dialog.get_primary_btn(),
+			});
+			dialog.hide();
+			frappe.msgprint(__("Updated {0} lot(s). Skipped {1} lot(s).", [
+				result.message.updated, result.message.skipped,
+			]));
+		},
+	});
+
+	const table = $("<table>").addClass("table table-bordered");
+	const header = $("<tr>").appendTo($("<thead>").appendTo(table));
+	for (const label of [__("Lot"), __("Item"), __("Warehouse"), __("Remaining Qty"), __("Initial Qty")]) {
+		$("<th>").text(label).appendTo(header);
+	}
+	const body = $("<tbody>").appendTo(table);
+	for (const lot of lots) {
+		const row = $("<tr>").appendTo(body);
+		for (const value of [lot.name, lot.item, lot.warehouse, lot.remaining_qty, lot.initial_qty]) {
+			$("<td>").text(value ?? "").appendTo(row);
+		}
+	}
+	dialog.fields_dict.preview.$wrapper.append(
+		$("<p>").text(__("Apply Corrections will set Remaining Qty to Initial Qty for the lots shown below.")),
+		$("<div>").css({ maxHeight: "50vh", overflow: "auto" }).append(table)
+	);
+	dialog.show();
+}

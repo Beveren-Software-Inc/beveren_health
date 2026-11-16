@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint, cstr
+from frappe.utils import cint, cstr, flt
 from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
 
 
@@ -222,3 +222,44 @@ def import_medical_uoms(file_url: str):
 	frappe.has_permission("Dispensing Setting", "write", throw=True)
 	result = import_medical_uoms_from_file(file_url)
 	return result
+
+
+def _check_bulk_lot_qty_correction():
+	settings = frappe.get_doc("Dispensing Setting", "Dispensing Setting")
+	settings.check_permission("write")
+	if not cint(settings.get("enable_bulk_lot_qty_correction")):
+		frappe.throw(_("Bulk Remaining Qty Correction is disabled."))
+
+
+@frappe.whitelist()
+def preview_bulk_lot_qty_correction():
+	_check_bulk_lot_qty_correction()
+	lots = frappe.get_list(
+		"Dispensing Lot",
+		fields=["name", "item", "warehouse", "initial_qty", "remaining_qty"],
+		order_by="name asc",
+		limit_page_length=0,
+	)
+	return [lot for lot in lots if flt(lot.remaining_qty) > flt(lot.initial_qty)]
+
+
+@frappe.whitelist(methods=["POST"])
+def apply_bulk_lot_qty_correction(lots):
+	_check_bulk_lot_qty_correction()
+	from beveren_health.beveren_health.doctype.dispensing_lot.dispensing_lot import correct_remaining_qty
+
+	reviewed = {lot["name"]: lot for lot in frappe.parse_json(lots)}
+	updated = 0
+	for name in sorted(reviewed):
+		current = frappe.db.get_value(
+			"Dispensing Lot", name, ["initial_qty", "remaining_qty"], as_dict=True, for_update=True
+		)
+		if not current or any(
+			flt(current[field]) != flt(reviewed[name][field])
+			for field in ("initial_qty", "remaining_qty")
+		):
+			continue
+		if correct_remaining_qty(name):
+			updated += 1
+
+	return {"updated": updated, "skipped": len(reviewed) - updated}

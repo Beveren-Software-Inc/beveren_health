@@ -3,6 +3,32 @@
 
 frappe.ui.form.on("Dispensing Lot", {
 	refresh(frm) {
+		if (!frm.is_new() && frm.perm?.[0]?.write &&
+			flt(frm.doc.remaining_qty) > flt(frm.doc.initial_qty)) {
+			frm.add_custom_button(__("Correct Remaining Qty"), () => {
+				if (frm.is_dirty()) {
+					frappe.msgprint(__("Save or discard your changes before correcting the balance."));
+					return;
+				}
+
+				frappe.confirm(
+					__("Set Remaining Qty to Initial Qty for this lot?"),
+					async () => {
+						const response = await frappe.call({
+							method: "beveren_health.beveren_health.doctype.dispensing_lot.dispensing_lot.correct_remaining_qty",
+							args: { name: frm.doc.name },
+							freeze: true,
+						});
+						await frm.reload_doc();
+						frappe.show_alert({
+							message: response.message ? __("Remaining Qty corrected.") : __("No correction needed."),
+							indicator: response.message ? "green" : "blue",
+						});
+					}
+				);
+			});
+		}
+
 		frm.set_query("batch_no", () => {
 			if (!frm.doc.item) {
 				return { filters: { name: ["in", []] } };

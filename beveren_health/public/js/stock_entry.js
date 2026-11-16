@@ -34,6 +34,10 @@
 // });
 
 frappe.ui.form.on("Stock Entry", {
+	before_submit(frm) {
+		return beveren_health.dispensing_lot_scan.confirm_quantity_overages(frm);
+	},
+
 	onload: function (frm) {
 		frm.current_focused_row = null;
 

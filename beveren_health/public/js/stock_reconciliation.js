@@ -1,4 +1,8 @@
 frappe.ui.form.on("Stock Reconciliation", {
+	before_submit(frm) {
+		return beveren_health.dispensing_lot_scan.confirm_quantity_overages(frm);
+	},
+
 	setup(frm) {
 		// Keep Stock Scanner submitted when this reconciliation is cancelled.
 		frm.ignore_doctypes_on_cancel_all = frm.ignore_doctypes_on_cancel_all || [];

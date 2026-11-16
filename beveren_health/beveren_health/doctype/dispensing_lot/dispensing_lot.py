@@ -252,6 +252,24 @@ class DispensingLot(Document):
 			self.status = "Active"
 
 
+@frappe.whitelist(methods=["POST"])
+def correct_remaining_qty(name):
+	frappe.get_doc("Dispensing Lot", name).check_permission("write")
+	lot = frappe.db.get_value(
+		"Dispensing Lot", name, ["initial_qty", "remaining_qty"], as_dict=True, for_update=True
+	)
+	if not lot:
+		frappe.throw(_("Dispensing Lot no longer exists."), frappe.DoesNotExistError)
+
+	initial_qty = flt(lot.initial_qty)
+	if flt(lot.remaining_qty) <= initial_qty:
+		return False
+
+	# Bypass the document recalculation for this explicit balance correction.
+	frappe.db.set_value("Dispensing Lot", name, "remaining_qty", initial_qty)
+	return True
+
+
 @frappe.whitelist()
 def add_transaction(
 	dispensing_lot,
