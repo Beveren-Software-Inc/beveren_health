@@ -136,7 +136,9 @@ def _populate_indemnity_payables(doc):
 		doc.payables = [
 			row
 			for row in (doc.payables or [])
-			if row.reference_document_type != "Indemnity" and row.component not in (LABEL_BEFORE, LABEL_AFTER)
+			if not (
+				row.reference_document_type == "Indemnity" and row.component in (LABEL_BEFORE, LABEL_AFTER)
+			)
 		]
 		doc.custom_indemnity_reward = 0.0
 		doc.custom_ir_base = 0.0
@@ -153,33 +155,69 @@ def _populate_indemnity_payables(doc):
 		indemnity.base_salary if (consider_before or consider_after) else indemnity.basic_salary, 3
 	)
 
-	def upsert_or_remove_payable(label, amount, payable_account):
-		existing_row = next((row for row in (doc.payables or []) if row.component == label), None)
-		if flt(amount, 3) > 0:
-			if existing_row:
-				existing_row.amount = flt(amount, 3)
-				existing_row.account = payable_account or existing_row.account
-				existing_row.reference_document_type = "Indemnity"
-				existing_row.reference_document = indemnity.name
-				existing_row.paid_via_salary_slip = indemnity.pay_via_salary_slip
-			else:
-				doc.append(
-					"payables",
-					{
-						"component": label,
-						"amount": flt(amount, 3),
-						"account": payable_account,
-						"reference_document_type": "Indemnity",
-						"reference_document": indemnity.name,
-						"status": "Unsettled",
-						"paid_via_salary_slip": indemnity.pay_via_salary_slip,
-					},
-				)
-		elif existing_row:
-			doc.payables.remove(existing_row)
+	previous = doc.get_doc_before_save()
+	# Update Indemnity calls this helper before save loads the original document.
+	if previous is None and not doc.is_new():
+		doc.load_doc_before_save()
+		previous = doc.get_doc_before_save()
+	link_changed = not previous or previous.custom_indemnity != indemnity.name
+	labels = (LABEL_BEFORE, LABEL_AFTER)
+	# The Desk helper sends this transient attribute after populating the link.
+	# It prevents a first save (or changed-link save) from undoing later deletions.
+	initialized = doc.get("__indemnity_payables_initialized_for") == indemnity.name
+	# Imports may supply their own complete or partial selection before insert.
+	if not previous and any(
+		row.reference_document_type == "Indemnity" and row.reference_document == indemnity.name
+		for row in doc.payables
+	):
+		initialized = True
+	add_missing = link_changed and not initialized
 
-	upsert_or_remove_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
-	upsert_or_remove_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
+	if link_changed:
+		# Replace only the generated components belonging to the previous link.
+		doc.set(
+			"payables",
+			[
+				row
+				for row in doc.payables
+				if not (
+					row.component in labels
+					and row.reference_document_type == "Indemnity"
+					and row.reference_document != indemnity.name
+				)
+			],
+		)
+
+	def upsert_payable(label, amount, payable_account):
+		for row in doc.payables:
+			if (
+				row.component == label
+				and row.reference_document_type == "Indemnity"
+				and row.reference_document == indemnity.name
+			):
+				row.amount = flt(amount, 3)
+				row.account = payable_account or row.account
+				row.paid_via_salary_slip = indemnity.pay_via_salary_slip
+				row.reference_document_type = "Indemnity"
+				row.reference_document = indemnity.name
+				return
+		if not add_missing or not flt(amount, 3):
+			return
+		doc.append(
+			"payables",
+			{
+				"component": label,
+				"amount": flt(amount, 3),
+				"account": payable_account,
+				"reference_document_type": "Indemnity",
+				"reference_document": indemnity.name,
+				"status": "Unsettled",
+				"paid_via_salary_slip": indemnity.pay_via_salary_slip,
+			},
+		)
+
+	upsert_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
+	upsert_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
 
 	# before_save runs after the controller's validate, so the totals computed
 	doc.set_totals()
