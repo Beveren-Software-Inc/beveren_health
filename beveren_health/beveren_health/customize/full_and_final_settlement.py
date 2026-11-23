@@ -76,14 +76,49 @@ def _populate_indemnity_payables(doc):
 	LABEL_BEFORE = "Indemnity Reward (Before Cut-Off Date)"
 	LABEL_AFTER = "Indemnity Reward (After Cut-Off Date)"
 
+	previous = doc.get_doc_before_save()
+	link_changed = not previous or previous.custom_indemnity != indemnity.name
+	labels = (LABEL_BEFORE, LABEL_AFTER)
+	# The Desk helper sends this transient attribute after populating the link.
+	# It prevents a first save (or changed-link save) from undoing later deletions.
+	initialized = doc.get("__indemnity_payables_initialized_for") == indemnity.name
+	# Imports may supply their own complete or partial selection before insert.
+	if not previous and any(
+		row.reference_document_type == "Indemnity" and row.reference_document == indemnity.name
+		for row in doc.payables
+	):
+		initialized = True
+	add_missing = link_changed and not initialized
+
+	if link_changed:
+		# Replace only the generated components belonging to the previous link.
+		doc.set(
+			"payables",
+			[
+				row
+				for row in doc.payables
+				if not (
+					row.component in labels
+					and row.reference_document_type == "Indemnity"
+					and row.reference_document != indemnity.name
+				)
+			],
+		)
+
 	def upsert_payable(label, amount, payable_account):
 		for row in doc.payables:
-			if row.component == label:
+			if (
+				row.component == label
+				and row.reference_document_type == "Indemnity"
+				and row.reference_document == indemnity.name
+			):
 				row.amount = flt(amount, 3)
 				row.account = payable_account or row.account
 				row.reference_document_type = "Indemnity"
 				row.reference_document = indemnity.name
 				return
+		if not add_missing or not flt(amount):
+			return
 		doc.append(
 			"payables",
 			{
@@ -97,11 +132,8 @@ def _populate_indemnity_payables(doc):
 			},
 		)
 
-	if flt(indemnity.indemnity_before):
-		upsert_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
-
-	if flt(indemnity.indemnity_after):
-		upsert_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
+	upsert_payable(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account)
+	upsert_payable(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account)
 
 	# before_save runs after the controller's validate, so the totals computed
 	doc.set_totals()

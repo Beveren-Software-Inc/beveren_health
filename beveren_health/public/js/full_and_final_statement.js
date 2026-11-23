@@ -25,14 +25,27 @@ frappe.ui.form.on("Full and Final Statement", {
 	},
 
 	custom_indemnity(frm) {
-		if (!frm.doc.custom_indemnity) return;
-		frappe.db.get_doc("Indemnity", frm.doc.custom_indemnity).then((indemnity) => {
+		const name = frm.doc.custom_indemnity;
+		const request = (frm.__indemnity_request || 0) + 1;
+		frm.__indemnity_request = request;
+		if (!name) {
+			delete frm.doc.__indemnity_payables_initialized_for;
+			return;
+		}
+		if (frm.doc.__indemnity_payables_initialized_for === name) return;
+		return frappe.db.get_doc("Indemnity", name).then((indemnity) => {
+			if (frm.doc.custom_indemnity !== name || frm.__indemnity_request !== request) return;
 			_populate_indemnity_payables(frm, indemnity);
+			frm.doc.__indemnity_payables_initialized_for = name;
 		});
 	},
 });
 
 frappe.ui.form.on("Full and Final Outstanding Statement", {
+	payables_remove(frm) {
+		frm.trigger("calculate_total_payable_amt");
+	},
+
 	reference_document(frm, cdt, cdn) {
 		const child = locals[cdt][cdn];
 		if (child.reference_document_type === "Indemnity" && child.reference_document) {
@@ -95,10 +108,26 @@ function _override_reference_queries(frm, type) {
 function _populate_indemnity_payables(frm, indemnity) {
 	const LABEL_BEFORE = "Indemnity Reward (Before Cut-Off Date)";
 	const LABEL_AFTER = "Indemnity Reward (After Cut-Off Date)";
+	const labels = [LABEL_BEFORE, LABEL_AFTER];
+	for (const row of [...(frm.doc.payables || [])]) {
+		if (
+			labels.includes(row.component) &&
+			row.reference_document_type === "Indemnity" &&
+			row.reference_document !== indemnity.name
+		) {
+			frappe.model.clear_doc(row.doctype, row.name);
+		}
+	}
 
 	function upsert(label, amount, account) {
-		let row = (frm.doc.payables || []).find((r) => r.component === label);
+		let row = (frm.doc.payables || []).find(
+			(r) =>
+				r.component === label &&
+				r.reference_document_type === "Indemnity" &&
+				r.reference_document === indemnity.name
+		);
 		if (!row) {
+			if (!flt(amount)) return;
 			row = frm.add_child("payables");
 		}
 		// Set directly on the row object to avoid Dynamic Link clear-on-change
@@ -112,12 +141,9 @@ function _populate_indemnity_payables(frm, indemnity) {
 		row.paid_via_salary_slip = indemnity.pay_via_salary_slip ? 1 : 0;
 	}
 
-	if (flt(indemnity.indemnity_before)) {
-		upsert(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account);
-	}
-	if (flt(indemnity.indemnity_after)) {
-		upsert(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account);
-	}
+	upsert(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account);
+	upsert(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account);
 
 	frm.refresh_field("payables");
+	frm.trigger("calculate_total_payable_amt");
 }
