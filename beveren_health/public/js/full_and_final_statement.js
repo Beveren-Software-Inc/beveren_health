@@ -108,22 +108,40 @@ frappe.ui.form.on("Full and Final Statement", {
 	},
 
 	custom_indemnity(frm) {
-		if (!frm.doc.custom_indemnity) {
+		const name = frm.doc.custom_indemnity;
+		const request = (frm.__indemnity_request || 0) + 1;
+		frm.__indemnity_request = request;
+		if (!name) {
+			delete frm.doc.__indemnity_payables_initialized_for;
 			_populate_indemnity_payables(frm, null);
 			return;
 		}
-		frappe.db.get_doc("Indemnity", frm.doc.custom_indemnity).then((indemnity) => {
+		if (frm.doc.__indemnity_payables_initialized_for === name) return;
+		return frappe.db.get_doc("Indemnity", name).then((indemnity) => {
+			if (frm.doc.custom_indemnity !== name || frm.__indemnity_request !== request) return;
 			_populate_indemnity_payables(frm, indemnity);
+			frm.doc.__indemnity_payables_initialized_for = name;
 		});
 	},
 });
 
 frappe.ui.form.on("Full and Final Outstanding Statement", {
+	payables_remove(frm) {
+		frm.trigger("calculate_total_payable_amt");
+	},
+
 	reference_document(frm, cdt, cdn) {
 		const child = locals[cdt][cdn];
 		if (child.reference_document_type === "Indemnity" && child.reference_document) {
-			frappe.db.get_doc("Indemnity", child.reference_document).then((indemnity) => {
-				if (!indemnity) return;
+			const reference = child.reference_document;
+			return frappe.db.get_doc("Indemnity", reference).then((indemnity) => {
+				if (
+					!indemnity ||
+					!(frm.doc[child.parentfield] || []).some((row) => row === child) ||
+					child.reference_document_type !== "Indemnity" ||
+					child.reference_document !== reference
+				)
+					return;
 				frappe.model.set_value(cdt, cdn, "account", indemnity.payable_account || "");
 				if (child.component === "Indemnity Reward (Before Cut-Off Date)") {
 					frappe.model.set_value(cdt, cdn, "amount", flt(indemnity.indemnity_before, 3));
@@ -232,22 +250,37 @@ function _populate_indemnity_payables(frm, indemnity) {
 	const LABEL_BEFORE = "Indemnity Reward (Before Cut-Off Date)";
 	const LABEL_AFTER = "Indemnity Reward (After Cut-Off Date)";
 
-	function upsert_or_remove(label, amount, account) {
-		let row = (frm.doc.payables || []).find((r) => r.component === label);
-		if (indemnity && flt(amount, 3) > 0) {
-			if (!row) {
-				row = frm.add_child("payables");
-			}
-			row.component = label;
-			row.amount = flt(amount, 3);
-			row.account = account || "";
-			row.reference_document_type = "Indemnity";
-			row.reference_document = indemnity.name;
-			row.status = row.status || "Unsettled";
-			row.paid_via_salary_slip = indemnity.pay_via_salary_slip ? 1 : 0;
-		} else if (row) {
+	const labels = [LABEL_BEFORE, LABEL_AFTER];
+	for (const row of [...(frm.doc.payables || [])]) {
+		if (
+			labels.includes(row.component) &&
+			row.reference_document_type === "Indemnity" &&
+			(!indemnity || row.reference_document !== indemnity.name)
+		) {
 			frappe.model.clear_doc(row.doctype, row.name);
 		}
+	}
+
+	function upsert(label, amount, account) {
+		let row = (frm.doc.payables || []).find(
+			(r) =>
+				r.component === label &&
+				r.reference_document_type === "Indemnity" &&
+				r.reference_document === indemnity.name
+		);
+		if (!row) {
+			if (!flt(amount, 3)) return;
+			row = frm.add_child("payables");
+		}
+		// Set directly on the row object to avoid Dynamic Link clear-on-change
+		// and event cascade that corrupts the BEFORE row when AFTER is processed
+		row.component = label;
+		row.amount = flt(amount, 3);
+		row.account = account || "";
+		row.reference_document_type = "Indemnity";
+		row.reference_document = indemnity.name;
+		row.status = row.status || "Unsettled";
+		row.paid_via_salary_slip = indemnity.pay_via_salary_slip ? 1 : 0;
 	}
 
 	if (indemnity) {
@@ -260,14 +293,11 @@ function _populate_indemnity_payables(frm, indemnity) {
 			flt(consider_full ? indemnity.base_salary : indemnity.basic_salary, 3)
 		);
 
-		upsert_or_remove(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account);
-		upsert_or_remove(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account);
+		upsert(LABEL_BEFORE, indemnity.indemnity_before, indemnity.payable_account);
+		upsert(LABEL_AFTER, indemnity.indemnity_after, indemnity.payable_account);
 	} else {
 		frm.set_value("custom_indemnity_reward", 0);
 		frm.set_value("custom_ir_base", 0);
-
-		upsert_or_remove(LABEL_BEFORE, 0, "");
-		upsert_or_remove(LABEL_AFTER, 0, "");
 	}
 
 	frm.refresh_field("payables");
